@@ -112,9 +112,17 @@ function tradedSports(priv, sportOf) {
    The curve is built from SETTLEMENTS, not fills: a fill is a cash movement,
    but only a settled market tells you whether the position was right. Each
    settlement's P&L is its payout minus what the contracts cost minus fees. */
-function tradeMetrics(priv) {
-  const settled = [...(priv.settlements || [])].sort(
+function tradeMetrics(priv, sinceDays) {
+  let settled = [...(priv.settlements || [])].sort(
     (a, b) => (a.ts || '').localeCompare(b.ts || ''));
+
+  // A window matters here: one blown-up market can dominate a lifetime total
+  // and say nothing about how you are trading now.
+  let cutoff = null;
+  if (sinceDays) {
+    cutoff = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    settled = settled.filter((x) => (x.ts || '') >= cutoff);
+  }
 
   let running = 0;
   let wins = 0;
@@ -128,7 +136,7 @@ function tradeMetrics(priv) {
     points.push({ ts: s.ts, value: running, ticker: s.ticker, pnl: s.pnl });
   }
 
-  const trades = priv.trades || [];
+  const trades = (priv.trades || []).filter((t) => !cutoff || (t.ts || '') >= cutoff);
   const fees = trades.reduce((sum, t) => sum + t.fee, 0)
     + settled.reduce((sum, s) => sum + s.fee, 0);
   const contracts = trades.reduce((sum, t) => sum + t.count, 0);
@@ -144,6 +152,9 @@ function tradeMetrics(priv) {
     staked,
     open: (priv.positions || []).filter((p) => p.position).length,
     series: bySeries,
+    // The single worst market, so an outlier can be named rather than left to
+    // quietly define the headline.
+    worst: settled.reduce((w, x) => (!w || x.pnl < w.pnl ? x : w), null),
   };
 }
 

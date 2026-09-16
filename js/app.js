@@ -33,6 +33,7 @@ const state = {
   view: 'games',
   detail: null,          // {view, key} when one game / player / group is open
   tradedOnly: true,      // Kalshi quotes strikes nobody has traded; hide those
+  tradeRange: 30,        // days of trading history to summarise; null = all
   query: '',
   openCards: new Set(),
   cardFilter: new Map(),   // card id -> active bet type
@@ -995,25 +996,10 @@ function paintHeader() {
   const stale = ageMin > 60;
 
   $('#freshness').innerHTML =
-    `<span class="dot ${stale ? 'stale' : ''}"></span>${relativeTime(fetchedAt)}`;
+    `<span class="dot ${stale ? 'stale' : ''}"></span>Updated ${relativeTime(fetchedAt)}`;
 
   paintCounts();
 
-  if (stale) {
-    // A visitor on the hosted site cannot run the fetcher, so only show the
-    // "re-run it" hint to someone actually developing locally.
-    const local = ['localhost', '127.0.0.1', ''].includes(location.hostname);
-    const advice = local
-      ? 'Re-run <code>python3 fetch_nfl.py</code> for current numbers.'
-      : 'Prices move fast — check <a href="https://kalshi.com" target="_blank" '
-        + 'rel="noopener">kalshi.com</a> for the live book.';
-
-    main.insertAdjacentHTML('beforebegin', `
-      <div class="wrap"><div class="banner">
-        <span>⏱</span>
-        <span>This snapshot was taken ${relativeTime(fetchedAt)}. ${advice}</span>
-      </div></div>`);
-  }
 }
 
 
@@ -1119,6 +1105,13 @@ document.addEventListener('click', (e) => {
         toggle.setAttribute('aria-expanded', 'true');
       });
     }
+    return;
+  }
+
+  const range = e.target.closest('[data-range]');
+  if (range) {
+    state.tradeRange = range.dataset.range ? Number(range.dataset.range) : null;
+    render();
     return;
   }
 

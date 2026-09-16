@@ -167,6 +167,13 @@ function sportBars(series, sportOf, labelOf) {
     </div>`;
 }
 
+const TRADE_RANGES = [
+  { days: 7,    label: '7 days' },
+  { days: 30,   label: '30 days' },
+  { days: 90,   label: '90 days' },
+  { days: null, label: 'All time' },
+];
+
 function viewTrades() {
   const priv = state.private;
   if (!priv) {
@@ -175,7 +182,14 @@ function viewTrades() {
       + 'The file it writes is gitignored and never reaches the deployed site.');
   }
 
-  const m = Board.tradeMetrics(priv);
+  const m = Board.tradeMetrics(priv, state.tradeRange);
+
+  const ranges = `
+    <div class="segmented" role="tablist" style="margin-bottom:14px">
+      ${TRADE_RANGES.map((r) => `
+        <button role="tab" aria-selected="${state.tradeRange === r.days}"
+                data-range="${r.days ?? ''}">${r.label}</button>`).join('')}
+    </div>`;
   const sportOf = (ticker) => {
     const entry = (state.index?.sports || []).find((s) =>
       (state.sportPrefixes[s.key] || []).some((p) => (ticker || '').toUpperCase().startsWith(p)));
@@ -187,7 +201,21 @@ function viewTrades() {
   const sports = new Set([...m.series.keys()].map(sportOf).filter(Boolean));
   const roi = m.staked ? (m.realised / m.staked) * 100 : 0;
 
+  // An outlier bigger than the net result would otherwise misrepresent
+  // everything; name it instead of hiding it.
+  const worst = m.worst;
+  const dominant = worst && m.realised !== 0
+    && Math.abs(worst.pnl) > Math.abs(m.realised);
+
   const body = `
+    ${ranges}
+    ${dominant ? `<div class="private-note">
+      <span>⚠️</span>
+      <span>One market — <code>${escapeHtml(worst.ticker)}</code> on
+      ${escapeHtml((worst.ts || '').slice(0, 10))} — lost
+      <b>${money(worst.pnl)}</b>, more than the net result below.
+      Without it the same period is <b>${money(m.realised - worst.pnl)}</b>.</span>
+    </div>` : ''}
     <div class="private-note">
       <span>🔒</span>
       <span>Local only. This tab is rendered from <code>data/private.local.json</code>,
