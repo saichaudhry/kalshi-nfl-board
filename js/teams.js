@@ -49,14 +49,22 @@ const TEAMS = {
 };
 
 /* Reverse index so prose labels resolve to a code. Both "Buffalo" and
-   "Bills" point at BUF. Los Angeles and New York are deliberately left
-   out as bare cities: they are ambiguous, and the nickname disambiguates. */
+   "Bills" point at BUF.
+
+   Two cities host two clubs each, and Kalshi separates them by appending the
+   nickname's first letter -- "New York J" and "New York G", "Los Angeles C"
+   and "Los Angeles R". Those forms are generated here; the bare city is left
+   out, because on its own it genuinely does not identify a club. */
 const TEAM_BY_NAME = (() => {
   const index = new Map();
-  const ambiguousCities = new Set(['Los Angeles', 'New York']);
+  const shared = new Set(['Los Angeles', 'New York']);
   for (const [code, team] of Object.entries(TEAMS)) {
     index.set(team.nick.toLowerCase(), code);
-    if (!ambiguousCities.has(team.city)) index.set(team.city.toLowerCase(), code);
+    if (shared.has(team.city)) {
+      index.set(`${team.city} ${team.nick[0]}`.toLowerCase(), code);
+    } else {
+      index.set(team.city.toLowerCase(), code);
+    }
   }
   return index;
 })();

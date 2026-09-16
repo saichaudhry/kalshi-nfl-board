@@ -28,6 +28,8 @@
   --shadow-card:   0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
   --shadow-chrome: 0 1px 0 rgba(0,0,0,.05);
 
+  --logo-plate:    #ffffff;
+
   --radius:   18px;
   --radius-s: 11px;
 
@@ -68,6 +70,7 @@
     --fill-strong:   rgba(120, 120, 128, 0.36);
     --shadow-card:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
     --shadow-chrome: 0 1px 0 rgba(255,255,255,.04);
+    --logo-plate:    #f2f2f4;
   }
 }
 
@@ -90,6 +93,7 @@
   --fill-strong:   rgba(120, 120, 128, 0.36);
   --shadow-card:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
   --shadow-chrome: 0 1px 0 rgba(255,255,255,.04);
+  --logo-plate:    #f2f2f4;
 }
 
 /* ============================================================
@@ -772,6 +776,13 @@ footer a { color: var(--text-2); }
   width: var(--logo-size, 26px);
   height: var(--logo-size, 26px);
   flex-shrink: 0;
+  /* A neutral plate, never the club colour: these crests are drawn to sit on
+     white, and several are a single flat colour (Rams navy, Jets green, Giants
+     navy), so a club-coloured plate makes those disappear entirely. Neutral
+     also keeps dark marks legible against a dark page. */
+  background: var(--logo-plate);
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .logo img,
@@ -786,13 +797,18 @@ footer a { color: var(--text-2); }
 .logo-mark {
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  /* The fallback carries the club colour itself, since the plate is neutral. */
   background: var(--team, var(--fill-strong));
   color: #fff;
   font-size: calc(var(--logo-size, 26px) * 0.3);
   font-weight: 800;
   letter-spacing: 0.02em;
 }
+
+/* A class selector beats the UA stylesheet's [hidden] rule, so without this
+   the monogram stays visible behind every crest and its letters bleed through
+   transparent logos. */
+.logo-mark[hidden] { display: none !important; }
 
 /* Two crests on a matchup row. They sit apart rather than overlapping:
    an overlapped stack reads as "a group", which is the wrong idea for two
@@ -813,4 +829,173 @@ footer a { color: var(--text-2); }
 
 @media (prefers-reduced-transparency: reduce) {
   .logo img { opacity: 1; }
+}
+
+/* ============================================================
+   Game grid
+   Every game is a box laid out left-to-right, top-to-bottom,
+   with its headline numbers on the face. Nothing has to be
+   opened to see who is favoured, by how much, and the total.
+   ============================================================ */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+}
+
+.gcard {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 13px 14px 11px;
+  text-align: left;
+  width: 100%;
+  transition: transform 140ms var(--ease-settle),
+              border-color 140ms var(--ease-settle);
+}
+.gcard:active { transform: scale(0.985); border-color: var(--fill-strong); }
+
+.gcard-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 11px;
+}
+
+.gcard-when {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.gcard-count {
+  margin-inline-start: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--fill);
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+/* One row per club: crest, name, and that club's moneyline price. */
+.gteam {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 0;
+}
+
+.gteam-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 550;
+  letter-spacing: -0.008em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The favourite is stated outright rather than left to be inferred
+   from which number happens to be larger. */
+.gteam.fav .gteam-name { font-weight: 700; }
+
+.gteam-price {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-3);
+  min-width: 42px;
+  text-align: right;
+}
+.gteam.fav .gteam-price { color: var(--yes); }
+
+.gcard-lines {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.gline {
+  flex: 1;
+  background: var(--fill);
+  border-radius: 9px;
+  padding: 6px 8px;
+  text-align: center;
+  min-width: 0;
+}
+
+.gline-k {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+
+.gline-v {
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gline-v.none { color: var(--text-3); font-weight: 500; }
+
+/* ---- Detail view ---- */
+.detail-bar {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 14px;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--accent);
+  white-space: nowrap;   /* "All games" must not wrap on a phone */
+  padding: 7px 12px 7px 9px;
+  border-radius: 20px;
+  background: var(--fill);
+  transition: transform 120ms var(--ease-settle),
+              background 120ms var(--ease-settle);
+}
+.back:active { transform: scale(0.96); background: var(--fill-strong); }
+
+.detail-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.detail-name {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-when { font-size: 12.5px; color: var(--text-3); }
+
+@media (max-width: 420px) {
+  .grid { grid-template-columns: 1fr; }
 }

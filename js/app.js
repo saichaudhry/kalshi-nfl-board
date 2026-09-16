@@ -25,6 +25,7 @@ const BET_FILTERS = [
 const state = {
   data: null,
   view: 'games',
+  detail: null,          // game key when a single game is open
   query: '',
   openCards: new Set(),
   cardFilter: new Map(),   // card id -> active bet type
@@ -441,32 +442,149 @@ function matches(text) {
   return !state.query || String(text).toLowerCase().includes(state.query);
 }
 
+/* The headline numbers for a game, derived from its own markets rather
+   than stored: the book is the source of truth, so the summary can never
+   drift from the prices shown inside. */
+function gameSummary(game) {
+  const full = (type) => game.markets.filter(
+    (m) => m.betType === type && m.segment === 'full');
+
+  // Moneyline: the two busiest full-game markets are the two clubs.
+  const money = full('moneyline')
+    .filter((m) => teamCodeFromLabel(m.label))
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, 2);
+
+  const priceFor = (code) => {
+    const hit = money.find((m) => teamCodeFromLabel(m.label) === code);
+    return hit ? midpoint(hit) : null;
+  };
+
+  // The market trading nearest 50c is the one the book considers the line —
+  // the same reasoning a sportsbook uses to publish a single number.
+  const nearestEven = (markets) => {
+    let best = null;
+    let bestGap = Infinity;
+    for (const m of markets) {
+      const mid = midpoint(m);
+      if (mid === null) continue;
+      const gap = Math.abs(mid - 50);
+      if (gap < bestGap) { best = m; bestGap = gap; }
+    }
+    return best;
+  };
+
+  const spreadMarket = nearestEven(full('spread'));
+  const totalMarket  = nearestEven(full('total'));
+
+  let spread = null;
+  if (spreadMarket) {
+    const line = (spreadMarket.label.match(/(\d+(?:\.\d+)?)/) || [])[1];
+    const code = teamCodeFromLabel(spreadMarket.label);
+    if (line) spread = code ? `${code} -${line}` : `-${line}`;
+  }
+
+  const totalLine = totalMarket
+    ? (totalMarket.label.match(/(\d+(?:\.\d+)?)/) || [])[1]
+    : null;
+
+  const away = priceFor(game.away);
+  const home = priceFor(game.home);
+
+  return {
+    away, home,
+    favourite: (away !== null && home !== null)
+      ? (away > home ? game.away : game.home)
+      : null,
+    spread,
+    total: totalLine ? `o/u ${totalLine}` : null,
+  };
+}
+
+function gameTile(game, markets) {
+  const s = gameSummary(game);
+  const teams = TEAMS;
+
+  const row = (code, price) => {
+    const team = teams[code];
+    const name = team ? `${team.city} ${team.nick}` : (code || '—');
+    const fav = s.favourite === code ? ' fav' : '';
+    return `
+      <div class="gteam${fav}">
+        ${teamLogo(code, 26)}
+        <span class="gteam-name">${escapeHtml(name)}</span>
+        <span class="gteam-price">${price === null ? '—' : `${price}¢`}</span>
+      </div>`;
+  };
+
+  const line = (key, value) => `
+    <div class="gline">
+      <span class="gline-k">${key}</span>
+      <span class="gline-v${value ? '' : ' none'}">${escapeHtml(value || '—')}</span>
+    </div>`;
+
+  return `
+    <button class="gcard" data-game="${escapeHtml(game.key)}">
+      <div class="gcard-top">
+        <span class="gcard-when">${escapeHtml(gameDay(game.date))}</span>
+        <span class="gcard-count">${markets.length}</span>
+      </div>
+      ${row(game.away, s.away)}
+      ${row(game.home, s.home)}
+      <div class="gcard-lines">
+        ${line('Spread', s.spread)}
+        ${line('Total', s.total)}
+      </div>
+    </button>`;
+}
+
+function visibleGames() {
+  return state.data.games
+    .filter((g) => matches(g.title) || matches(g.away) || matches(g.home)
+      || (state.query && g.markets.some((m) => matches(m.label) || matches(m.player))))
+    .map((g) => [g, marketsForGame(g)]);
+}
+
+function marketsForGame(game) {
+  if (!state.query) return game.markets;
+  // A search narrows the markets inside a game too, so looking for a player
+  // surfaces their lines rather than the game's full book.
+  if (matches(game.title) || matches(game.away) || matches(game.home)) return game.markets;
+  return game.markets.filter((m) => matches(m.label) || matches(m.player));
+}
+
 function viewGames() {
-  const games = state.data.games.filter((g) =>
-    matches(g.title) || matches(g.away) || matches(g.home)
-    || (state.query && g.markets.some((m) => matches(m.label))));
+  if (state.detail) return gameDetail(state.detail);
 
-  if (!games.length) return emptyState('No games match', 'Try a team name like “Bills” or clear the search.');
+  const games = visibleGames();
+  if (!games.length) {
+    return emptyState('No games match', 'Try a team name like "Bills", or clear the search.');
+  }
+  return `<div class="grid">${games.map(([g, m]) => gameTile(g, m)).join('')}</div>`;
+}
 
-  return games.map((g) => {
-    // When searching, narrow the rows inside the card too, so a player
-    // search surfaces that player's lines rather than the whole game.
-    const markets = state.query
-      ? g.markets.filter((m) => matches(m.label) || matches(m.player)
-          || matches(g.title) || matches(g.away) || matches(g.home))
-      : g.markets;
-    const crests = (g.away && g.home)
-      ? `<span class="crests">${teamLogo(g.away, 28)}${teamLogo(g.home, 28)}</span>`
-      : '';
-    return card(
-      g.key,
-      g.title || `${g.away} vs ${g.home}`,
-      `${gameDay(g.date)} · ${new Set(markets.map((m) => m.typeLabel)).size} market types`,
-      markets.length,
-      markets,
-      crests,
-    );
-  }).join('');
+function gameDetail(key) {
+  const game = state.data.games.find((g) => g.key === key);
+  if (!game) return emptyState('Game not found', 'It may have closed since this snapshot.');
+
+  const markets = marketsForGame(game);
+  return `
+    <div class="detail-bar">
+      <button class="back" data-back="1">
+        <svg width="8" height="13" viewBox="0 0 9 14" fill="none" aria-hidden="true">
+          <path d="M7.5 1L2 7l5.5 6" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>All games
+      </button>
+      <span class="detail-title">
+        ${game.away ? teamLogo(game.away, 26) : ''}${game.home ? teamLogo(game.home, 26) : ''}
+        <span class="detail-name">${escapeHtml(game.title || key)}</span>
+      </span>
+      <span class="detail-when" style="margin-inline-start:auto">
+        ${escapeHtml(gameDay(game.date))} · ${markets.length} markets
+      </span>
+    </div>
+    ${cardBody(key, markets, 'game')}`;
 }
 
 /* Players are derived in the browser rather than precomputed, so the
@@ -575,9 +693,47 @@ function paintHeader() {
 
 /* ---------- events ---------- */
 
+/* Opening a game pushes a history entry, so the browser and the phone's
+   back gesture leave the detail instead of leaving the site. */
+function openDetail(key) {
+  state.detail = key;
+  state.cardFilter.delete(key);
+  history.pushState({ detail: key }, '', `#${key}`);
+  render();
+  window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+}
+
+function closeDetail() {
+  if (!state.detail) return;
+  state.detail = null;
+  history.pushState({}, '', location.pathname + location.search);
+  render();
+}
+
+const prefersReducedMotion = () =>
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+window.addEventListener('popstate', (e) => {
+  state.detail = e.state?.detail ?? null;
+  render();
+});
+
+
+
 /* One delegated listener rather than a listener per row: with ~12,000
    markets on the page, per-row handlers would be the slowest thing here. */
 document.addEventListener('click', (e) => {
+  const tile = e.target.closest('[data-game]');
+  if (tile) {
+    openDetail(tile.dataset.game);
+    return;
+  }
+
+  if (e.target.closest('[data-back]')) {
+    closeDetail();
+    return;
+  }
+
   const toggle = e.target.closest('[data-toggle]');
   if (toggle) {
     const id = toggle.dataset.toggle;
@@ -638,6 +794,7 @@ $('#tabs').addEventListener('click', (e) => {
     b.setAttribute('aria-selected', String(b === tab));
   }
   state.view = tab.dataset.view;
+  state.detail = null;
   state.openCards.clear();
   moveThumb();
   render();
@@ -651,6 +808,7 @@ $('#search').addEventListener('input', (e) => {
   const value = e.target.value.trim().toLowerCase();
   searchTimer = setTimeout(() => {
     state.query = value;
+    if (value) state.detail = null;
     render();
   }, 120);
 });
@@ -681,6 +839,11 @@ async function boot() {
     main.innerHTML = emptyState('No open NFL markets',
       'Kalshi lists no NFL markets right now. This is normal between February and August.');
     return;
+  }
+
+  const deepLink = location.hash.slice(1);
+  if (deepLink && state.data.games.some((g) => g.key === deepLink)) {
+    state.detail = deepLink;
   }
 
   paintHeader();

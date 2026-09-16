@@ -116,8 +116,17 @@ The interface shows Kalshi's own conventions — prices in cents, where `67¢`
 means the market thinks it's 67% likely, with YES/NO both quoted — plus a
 probability bar and the price change since the previous close.
 
-**Each market type is drawn in the shape that suits it**, rather than as one
-uniform list of rows. A moneyline becomes a head-to-head box with both teams'
+**Games are a grid, not a list of dropdowns.** Every game is a box laid out
+left-to-right and top-to-bottom, showing its headline numbers on the face: both
+clubs with their moneyline price, which side is favoured, the spread and the
+total. Nothing has to be opened to compare the slate. The spread and total shown
+are whichever market is trading nearest 50¢ — the same reasoning a sportsbook
+uses to publish one number out of a ladder. Opening a game pushes a history
+entry, so the browser and the phone's back gesture leave the game rather than
+the site, and every game has a shareable `#26SEP17DETBUF` deep link.
+
+Inside a game, **each market type is drawn in the shape that suits it**, rather
+than as one uniform list of rows. A moneyline becomes a head-to-head box with both teams'
 implied probability set large. Spreads, totals and team totals become ladders
 split by side, where the repeated stem ("Buffalo wins by over …") is lifted into
 a heading so each rung shows only the line that actually varies — turning a wall
