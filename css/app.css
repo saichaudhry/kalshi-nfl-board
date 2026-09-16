@@ -1,0 +1,500 @@
+/* ============================================================
+   Design tokens
+   Full light palette on bare :root, then only the values that
+   change get redefined for dark. Nothing is defined *only*
+   inside a media query, so the explicit theme toggle can win
+   in both directions.
+   ============================================================ */
+:root {
+  --bg:            #f5f5f7;
+  --bg-elevated:   #ffffff;
+  --surface:       rgba(255, 255, 255, 0.72);
+  --surface-solid: #ffffff;
+  --hairline:      rgba(0, 0, 0, 0.10);
+  --hairline-soft: rgba(0, 0, 0, 0.055);
+
+  --text:          #1d1d1f;
+  --text-2:        #52525b;
+  --text-3:        #86868b;
+
+  --accent:        #0a84ff;
+  --yes:           #00875a;   /* Kalshi's market green  */
+  --yes-bg:        rgba(0, 135, 90, 0.10);
+  --no:            #c8102e;   /* Kalshi's market red    */
+  --no-bg:         rgba(200, 16, 46, 0.10);
+
+  --fill:          rgba(120, 120, 128, 0.12);
+  --fill-strong:   rgba(120, 120, 128, 0.20);
+  --shadow-card:   0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+  --shadow-chrome: 0 1px 0 rgba(0,0,0,.05);
+
+  --radius:   18px;
+  --radius-s: 11px;
+
+  /* Apple's shipped spring values, expressed as CSS easings.
+     Damping 1.0 -> no overshoot, for anything that isn't
+     momentum-driven. The bounce curve is reserved for elements
+     the user actually flicked or tapped open. */
+  --ease-settle: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.46, 1);
+  --dur:         0.4s;
+  --dur-fast:    0.22s;
+}
+
+:root:not([data-theme="light"]) {
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:            #000000;
+    --bg-elevated:   #1c1c1e;
+    --surface:       rgba(28, 28, 30, 0.72);
+    --surface-solid: #1c1c1e;
+    --hairline:      rgba(255, 255, 255, 0.12);
+    --hairline-soft: rgba(255, 255, 255, 0.07);
+
+    --text:          #f5f5f7;
+    --text-2:        #aeaeb2;
+    --text-3:        #8e8e93;
+
+    --accent:        #0a84ff;
+    --yes:           #30d158;
+    --yes-bg:        rgba(48, 209, 88, 0.15);
+    --no:            #ff453a;
+    --no-bg:         rgba(255, 69, 58, 0.15);
+
+    --fill:          rgba(120, 120, 128, 0.24);
+    --fill-strong:   rgba(120, 120, 128, 0.36);
+    --shadow-card:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+    --shadow-chrome: 0 1px 0 rgba(255,255,255,.04);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:            #000000;
+  --bg-elevated:   #1c1c1e;
+  --surface:       rgba(28, 28, 30, 0.72);
+  --surface-solid: #1c1c1e;
+  --hairline:      rgba(255, 255, 255, 0.12);
+  --hairline-soft: rgba(255, 255, 255, 0.07);
+  --text:          #f5f5f7;
+  --text-2:        #aeaeb2;
+  --text-3:        #8e8e93;
+  --yes:           #30d158;
+  --yes-bg:        rgba(48, 209, 88, 0.15);
+  --no:            #ff453a;
+  --no-bg:         rgba(255, 69, 58, 0.15);
+  --fill:          rgba(120, 120, 128, 0.24);
+  --fill-strong:   rgba(120, 120, 128, 0.36);
+  --shadow-card:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+  --shadow-chrome: 0 1px 0 rgba(255,255,255,.04);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+               system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  font-optical-sizing: auto;
+  /* Tabular figures everywhere: prices must not reflow as they tick. */
+  font-variant-numeric: tabular-nums;
+}
+
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+input  { font: inherit; color: inherit; }
+
+.wrap {
+  max-width: 940px;
+  margin: 0 auto;
+  padding-inline: 16px;   /* never collapses at any width */
+}
+
+/* ============================================================
+   Header - a translucent layer content scrolls beneath,
+   not an opaque strip that eats a fixed band of the viewport.
+   ============================================================ */
+.chrome {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 50;
+  background: var(--surface);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid var(--hairline-soft);
+  box-shadow: var(--shadow-chrome);
+}
+
+.chrome-top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-block: 14px 10px;
+  flex-wrap: wrap;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.35rem, 4vw, 1.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.024em;   /* large text reads too loose without this */
+  font-weight: 700;
+}
+
+.freshness {
+  font-size: 12px;
+  color: var(--text-3);
+  letter-spacing: 0.005em;
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--yes);
+  box-shadow: 0 0 0 3px var(--yes-bg);
+}
+.dot.stale { background: #ff9f0a; box-shadow: 0 0 0 3px rgba(255,159,10,.15); }
+
+.subhead {
+  font-size: 13px;
+  color: var(--text-2);
+  margin: 0 0 12px;
+  letter-spacing: 0.003em;
+}
+
+/* Segmented control - the iOS pill, with a sliding indicator that
+   moves under the active label rather than repainting per tab. */
+.segmented {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  background: var(--fill);
+  border-radius: 10px;
+  padding: 2px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.segmented::-webkit-scrollbar { display: none; }
+
+.segmented button {
+  position: relative;
+  z-index: 1;
+  flex: 1 0 auto;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-settle);
+}
+.segmented button[aria-selected="true"] { color: var(--text); font-weight: 600; }
+.segmented button:active { transform: scale(0.96); }
+
+.seg-thumb {
+  position: absolute;
+  top: 2px; bottom: 2px; left: 0;
+  border-radius: 8px;
+  background: var(--surface-solid);
+  box-shadow: 0 1px 3px rgba(0,0,0,.14);
+  transition: transform var(--dur) var(--ease-settle),
+              width    var(--dur) var(--ease-settle);
+  pointer-events: none;
+}
+
+.search {
+  width: 100%;
+  padding: 9px 13px;
+  border-radius: var(--radius-s);
+  background: var(--fill);
+  border: 1px solid transparent;
+  margin-bottom: 12px;
+  transition: border-color var(--dur-fast) var(--ease-settle),
+              background   var(--dur-fast) var(--ease-settle);
+}
+.search::placeholder { color: var(--text-3); }
+.search:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface-solid);
+}
+
+/* ============================================================
+   Cards
+   ============================================================ */
+main { padding-block: 18px 64px; }
+
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 15px 17px;
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease-settle);
+}
+/* Feedback on the press itself, not on release. */
+.card-head:active { background: var(--fill); }
+
+.matchup { flex: 1; min-width: 0; }
+
+.matchup { display: block; }
+
+.teams {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-3);
+  letter-spacing: 0.004em;
+  margin-top: 2px;
+}
+
+.count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--fill);
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.chev {
+  color: var(--text-3);
+  flex-shrink: 0;
+  transition: transform var(--dur) var(--ease-settle);
+}
+.card[open] .chev,
+.card.open .chev { transform: rotate(90deg); }
+
+/* The disclosure animates on a grid track rather than max-height,
+   so it opens to the content's true height at any width. */
+.card-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur) var(--ease-settle);
+}
+.card.open .card-body { grid-template-rows: 1fr; }
+.card-body > div { overflow: hidden; }
+
+.body-inner { padding: 0 17px 15px; }
+
+/* ============================================================
+   Market rows
+   ============================================================ */
+.group-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.055em;   /* small text needs positive tracking */
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 16px 0 7px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 2px;
+  border-top: 1px solid var(--hairline-soft);
+}
+.row:first-of-type { border-top: 0; }
+
+.row-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-vol {
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.prices { display: flex; gap: 6px; flex-shrink: 0; }
+
+.price {
+  min-width: 54px;
+  padding: 5px 9px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  transition: transform 100ms var(--ease-settle),
+              filter    100ms var(--ease-settle);
+}
+.price:active { transform: scale(0.95); filter: brightness(0.94); }
+
+.price .side {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  opacity: 0.72;
+}
+
+.price.yes { background: var(--yes-bg); color: var(--yes); }
+.price.no  { background: var(--no-bg);  color: var(--no);  }
+.price.empty { background: var(--fill); color: var(--text-3); font-weight: 500; }
+
+/* A probability bar under the label reads faster than the number
+   alone - it maps price to the thing price actually means. */
+.prob {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fill);
+  overflow: hidden;
+  margin-top: 5px;
+}
+.prob i {
+  display: block;
+  height: 100%;
+  background: var(--yes);
+  border-radius: 2px;
+  transition: width var(--dur) var(--ease-settle);
+}
+
+.delta { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.delta.up   { color: var(--yes); }
+.delta.down { color: var(--no); }
+
+/* ============================================================
+   States
+   ============================================================ */
+.notice {
+  text-align: center;
+  padding: 56px 20px;
+  color: var(--text-2);
+}
+.notice h2 {
+  font-size: 17px;
+  margin: 0 0 6px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.notice p { margin: 0; font-size: 14px; }
+
+.banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: rgba(255, 159, 10, 0.14);
+  border: 1px solid rgba(255, 159, 10, 0.3);
+  color: var(--text);
+  padding: 11px 14px;
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.skeleton {
+  height: 74px;
+  border-radius: var(--radius);
+  background: var(--fill);
+  margin-bottom: 12px;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 0.95; } }
+
+.player-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.player-team {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+
+footer {
+  padding: 26px 0 40px;
+  font-size: 12px;
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1.7;
+}
+footer a { color: var(--text-2); }
+
+/* ============================================================
+   Accessibility preferences
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  /* Reduced motion means gentler feedback, not none: the card still
+     opens, it just cross-fades instead of springing. */
+  .card-body { transition: none; }
+  .price:active, .card-head:active, .segmented button:active { transform: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .chrome { background: var(--surface-solid); backdrop-filter: none; }
+}
+
+@media (prefers-contrast: more) {
+  .card   { border-color: var(--text-3); }
+  .chrome { background: var(--surface-solid); backdrop-filter: none; }
+  .price  { outline: 1px solid currentColor; }
+}
+
+@media (max-width: 560px) {
+  .row { flex-wrap: wrap; gap: 8px; }
+  .row-label { flex-basis: 100%; white-space: normal; }
+  .price { min-width: 50px; }
+}
+
+/* ------------------------------------------------------------
+   Refinements after looking at the rendered page
+   ------------------------------------------------------------ */
+
+/* The probability bar is a glanceable cue, not a full-width rule.
+   Capping it keeps it readable next to long market labels. */
+.prob { max-width: 260px; }
+
+/* Nested (in-card) segmented controls have no sliding thumb, so the
+   selected state needs its own background to stay legible. */
+.body-inner .segmented button[aria-selected="true"] {
+  background: var(--surface-solid);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}

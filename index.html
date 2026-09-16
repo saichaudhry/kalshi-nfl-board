@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gridiron Board — every NFL market on Kalshi</title>
+<meta name="description" content="Live prices for every upcoming NFL prediction market on Kalshi, sorted by game, bet type and player.">
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
+</head>
+<body>
+
+<header class="chrome">
+  <div class="wrap">
+    <div class="chrome-top">
+      <h1>Gridiron Board</h1>
+      <div class="freshness" id="freshness"></div>
+    </div>
+    <p class="subhead" id="subhead">Loading markets…</p>
+
+    <div class="segmented" id="tabs" role="tablist">
+      <span class="seg-thumb" id="thumb"></span>
+      <button role="tab" data-view="games"   aria-selected="true">Games</button>
+      <button role="tab" data-view="players" aria-selected="false">Players</button>
+      <button role="tab" data-view="futures" aria-selected="false">Futures</button>
+    </div>
+
+    <input class="search" id="search" type="search" autocomplete="off"
+           placeholder="Search teams, players, or markets…"
+           aria-label="Search markets">
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="skeleton"></div>
+  <div class="skeleton"></div>
+  <div class="skeleton"></div>
+</main>
+
+<footer class="wrap">
+  <p>
+    Prices from the <a href="https://kalshi.com" target="_blank" rel="noopener">Kalshi</a>
+    public market-data API. Not affiliated with Kalshi. For coursework, not for trading.<br>
+    Built for CMU 15-113 · <span id="built"></span>
+  </p>
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>

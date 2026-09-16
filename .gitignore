@@ -1,0 +1,19 @@
+# Secrets — never commit these. This project does not need an API key, but the
+# rule stays so that adding one later cannot leak it.
+.env
+.env.*
+*.pem
+*.key
+config.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Fetcher scratch
+data/*.tmp
+
+# macOS
+.DS_Store
