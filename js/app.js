@@ -191,27 +191,10 @@ function splitLadder(markets) {
     .map(([side, rungs]) => [side, rungs.sort((a, b) => (a.line ?? 0) - (b.line ?? 0))]);
 }
 
+/* Inside a player's own card every side is that player's name, which the card
+   header already says; suppressSide drops that repeated heading. */
 function ladderPanel(title, markets, suppressSide) {
-  let sides = splitLadder(markets);
-
-  // Inside a player's own card every side is that player's name, which the
-  // card header already says. Drop the heading rather than repeat it.
-  if (suppressSide) {
-    sides = sides.map(([side, rungs]) =>
-      [side === suppressSide ? '' : side, rungs]);
-  }
-
-  // A single unnamed side means the stem carried no information; render it
-  // flat rather than adding a heading that just repeats the panel title.
-  const body = (sides.length === 1 && !sides[0][0])
-    ? `<div class="ladder">${sides[0][1].map((r) => rung(r.market, r.line)).join('')}</div>`
-    : sides.map(([side, rungs]) => `
-        <div class="stat-row">
-          ${side ? `<div class="stat-name">${escapeHtml(side)}</div>` : ''}
-          <div class="ladder">${rungs.map((r) => rung(r.market, r.line)).join('')}</div>
-        </div>`).join('');
-
-  return panelShell(title, sumVolume(markets), body);
+  return panelShell(title, sumVolume(markets), ladderSides(markets, suppressSide));
 }
 
 function tilePanel(title, markets) {
@@ -245,17 +228,170 @@ function propsPanel(markets) {
   return panelShell('Player props', sumVolume(markets), boxes, `${byPlayer.size} players`);
 }
 
-/* Render a ladder's sides. Sides are only labelled when there is more than
-   one, and never when the label just repeats the box it sits in. */
+/* Below this many strikes a line is not worth a slider -- two or three
+   boxes are easier to read at a glance than a track you have to drag. */
+const SLIDER_MIN_POINTS = 4;
+
+/* Render a ladder's sides. A long ladder becomes one number line; a short
+   one stays as boxes. Sides are only labelled when there is more than one,
+   and never when the label just repeats the box it sits in. */
 function ladderSides(markets, suppress) {
   const sides = splitLadder(markets);
   const multiple = sides.length > 1;
+
   return sides.map(([side, rungs]) => {
-    const show = multiple && side && side !== suppress;
+    const name = (multiple && side && side !== suppress) ? side : '';
+    const points = rungs.filter((r) => r.line !== null && midpoint(r.market) !== null);
+
+    if (points.length >= SLIDER_MIN_POINTS) return numberLine(name, points);
+
     return `
-      ${show ? `<div class="side-name">${escapeHtml(side)}</div>` : ''}
+      ${name ? `<div class="side-name">${escapeHtml(name)}</div>` : ''}
       <div class="ladder">${rungs.map((r) => rung(r.market, r.line)).join('')}</div>`;
   }).join('');
+}
+
+/* One number line for a whole ladder.
+
+   Strikes are placed by value, not by index, so the gaps between them are
+   true to the numbers -- a jump from 40 to 90 yards looks like a jump.
+   The payload rides on the element as JSON and the interaction is wired up
+   afterwards by initNumberLines(), which lets dragging mutate the DOM
+   directly instead of re-rendering the page on every pointer move. */
+function numberLine(name, points) {
+  const sorted = [...points].sort((a, b) => a.line - b.line);
+  const data = sorted.map((r) => ({
+    v: r.line,
+    p: midpoint(r.market),
+    bid: r.market.bid,
+    ask: r.market.ask,
+    vol: r.market.volume,
+    label: r.market.label,
+  }));
+
+  const min = data[0].v;
+  const max = data[data.length - 1].v;
+  const span = (max - min) || 1;
+  const at = (v) => ((v - min) / span) * 100;
+
+  // Open on the strike trading nearest 50c: the line the book is actually
+  // undecided about, and the most informative single point on the ladder.
+  let start = 0;
+  let gap = Infinity;
+  data.forEach((d, i) => {
+    const g = Math.abs(d.p - 50);
+    if (g < gap) { gap = g; start = i; }
+  });
+
+  const ticks = data
+    .map((d) => `<span class="nline-tick" style="left:${at(d.v)}%"></span>`)
+    .join('');
+
+  const current = data[start];
+  return `
+    <div class="nline" data-nl="${escapeHtml(JSON.stringify(data))}" data-i="${start}">
+      <div class="nline-top">
+        ${name ? `<span class="nline-name">${escapeHtml(name)}</span>` : ''}
+        <span class="nline-out">
+          <b class="nline-v">${current.v}</b>
+          <span class="nline-p">${current.p}¢</span>
+        </span>
+      </div>
+      <div class="nline-track" role="slider" tabindex="0"
+           aria-label="${escapeHtml(name || 'Line')}"
+           aria-valuemin="${min}" aria-valuemax="${max}"
+           aria-valuenow="${current.v}"
+           aria-valuetext="${escapeHtml(`${current.v}, ${current.p} cents`)}">
+        <span class="nline-fill" style="width:${at(current.v)}%"></span>
+        ${ticks}
+        <span class="nline-knob" style="left:${at(current.v)}%"></span>
+      </div>
+      <div class="nline-axis">
+        <span>${min}</span>
+        <span class="nline-meta">${data.length} lines</span>
+        <span>${max}</span>
+      </div>
+    </div>`;
+}
+
+/* Wire up every number line that is currently on the page. */
+function initNumberLines(root = document) {
+  root.querySelectorAll('.nline').forEach(setupNumberLine);
+}
+
+function setupNumberLine(el) {
+  if (el.dataset.ready) return;          // idempotent: safe to call after any render
+  el.dataset.ready = '1';
+
+  const data = JSON.parse(el.dataset.nl);
+  const track = el.querySelector('.nline-track');
+  const fill  = el.querySelector('.nline-fill');
+  const knob  = el.querySelector('.nline-knob');
+  const vOut  = el.querySelector('.nline-v');
+  const pOut  = el.querySelector('.nline-p');
+
+  const min = data[0].v;
+  const max = data[data.length - 1].v;
+  const span = (max - min) || 1;
+
+  let index = Number(el.dataset.i) || 0;
+
+  function paint(next) {
+    index = Math.max(0, Math.min(data.length - 1, next));
+    const d = data[index];
+    const pct = ((d.v - min) / span) * 100;
+
+    fill.style.width = `${pct}%`;
+    knob.style.left = `${pct}%`;
+    vOut.textContent = d.v;
+    pOut.textContent = `${d.p}¢`;
+    pOut.classList.toggle('cold', d.p < 10);
+
+    track.setAttribute('aria-valuenow', d.v);
+    track.setAttribute('aria-valuetext', `${d.v}, ${d.p} cents`);
+    track.title = `${d.label} — ${d.bid ?? '—'}¢ bid / ${d.ask ?? '—'}¢ ask`;
+  }
+
+  /* Snap to the strike nearest the finger by VALUE, not by slot, so a
+     ladder with uneven gaps still selects whatever is actually closest. */
+  function nearest(clientX) {
+    const box = track.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - box.left) / box.width));
+    const value = min + ratio * span;
+    let best = 0;
+    let gap = Infinity;
+    data.forEach((d, i) => {
+      const g = Math.abs(d.v - value);
+      if (g < gap) { gap = g; best = i; }
+    });
+    return best;
+  }
+
+  track.addEventListener('pointerdown', (e) => {
+    // Respond on the press itself, not on release.
+    track.setPointerCapture(e.pointerId);
+    el.classList.add('dragging');
+    paint(nearest(e.clientX));
+    e.preventDefault();
+  });
+
+  track.addEventListener('pointermove', (e) => {
+    if (!el.classList.contains('dragging')) return;
+    paint(nearest(e.clientX));
+  });
+
+  const release = () => el.classList.remove('dragging');
+  track.addEventListener('pointerup', release);
+  track.addEventListener('pointercancel', release);
+
+  track.addEventListener('keydown', (e) => {
+    const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
+    if (step) { paint(index + step); e.preventDefault(); return; }
+    if (e.key === 'Home') { paint(0); e.preventDefault(); }
+    if (e.key === 'End')  { paint(data.length - 1); e.preventDefault(); }
+  });
+
+  paint(index);
 }
 
 function playerBox(name, markets) {
@@ -649,6 +785,7 @@ function render() {
   if (!state.data) return;
   const views = { games: viewGames, players: viewPlayers, futures: viewFutures };
   main.innerHTML = (views[state.view] || viewGames)();
+  initNumberLines();
 }
 
 /* ---------- chrome ---------- */
@@ -750,6 +887,7 @@ document.addEventListener('click', (e) => {
       state.openCards.add(id);
       section.querySelector('.card-body > div').innerHTML =
         cardBody(id, currentMarketsFor(id), modeFor(id));
+      initNumberLines(section);
       // Next frame, so the grid-row transition has a 0fr start to animate from.
       requestAnimationFrame(() => {
         section.classList.add('open');
@@ -763,8 +901,14 @@ document.addEventListener('click', (e) => {
   if (filter) {
     const id = filter.dataset.card;
     state.cardFilter.set(id, filter.dataset.filter || null);
-    const host = document.querySelector(`.card[data-id="${CSS.escape(id)}"] .card-body > div`);
-    if (host) host.innerHTML = cardBody(id, currentMarketsFor(id), modeFor(id));
+    // Replace the body the chip actually lives in. Looking the card up by id
+    // only worked inside an accordion; in the detail view there is no .card
+    // wrapper, so the lookup returned null and pressing a chip did nothing.
+    const shell = filter.closest('.body-inner');
+    if (shell) {
+      shell.outerHTML = cardBody(id, currentMarketsFor(id), modeFor(id));
+      initNumberLines();
+    }
   }
 });
 

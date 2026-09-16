@@ -999,3 +999,137 @@ footer a { color: var(--text-2); }
 @media (max-width: 420px) {
   .grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   Number line
+   A ladder of strikes is one question asked twenty times, so it
+   reads as one control rather than twenty boxes: drag along the
+   line to move through the strikes and watch the price change.
+   ============================================================ */
+
+.nline {
+  padding: 9px 4px 4px;
+  touch-action: pan-y;   /* let the page scroll vertically, we own the X axis */
+}
+
+.nline-top {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 9px;
+}
+
+.nline-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.nline-out {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.nline-v {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.nline-p {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--yes);
+  letter-spacing: -0.015em;
+  min-width: 38px;
+  text-align: right;
+}
+.nline-p.cold { color: var(--text-3); }
+
+.nline-track {
+  position: relative;
+  height: 30px;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+/* The rail is drawn as a child pseudo-element so the hit area can stay a
+   comfortable 30px tall while the line itself is hairline-thin. */
+.nline-track::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--fill-strong);
+}
+
+.nline-fill {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--yes);
+}
+
+.nline-tick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 9px;
+  margin-inline-start: -1px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: var(--text-3);
+  opacity: 0.35;
+}
+
+.nline-knob {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-inline-start: -9px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--surface-solid);
+  border: 2px solid var(--yes);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Motion only on settle. While a finger is down the knob tracks it 1:1;
+   a transition there would make it lag behind the pointer. */
+.nline-fill,
+.nline-knob { transition: left 260ms var(--ease-settle), width 260ms var(--ease-settle); }
+.nline.dragging .nline-fill,
+.nline.dragging .nline-knob { transition: none; }
+
+.nline.dragging .nline-knob { transform: translateY(-50%) scale(1.18); }
+
+.nline-track:focus-visible { outline: none; }
+.nline-track:focus-visible .nline-knob {
+  box-shadow: 0 0 0 4px var(--yes-bg), 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.nline-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+
+.nline-meta { opacity: 0.8; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nline-fill, .nline-knob { transition: none; }
+  .nline.dragging .nline-knob { transform: translateY(-50%); }
+}

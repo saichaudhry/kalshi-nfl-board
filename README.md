@@ -125,6 +125,16 @@ uses to publish one number out of a ladder. Opening a game pushes a history
 entry, so the browser and the phone's back gesture leave the game rather than
 the site, and every game has a shareable `#26SEP17DETBUF` deep link.
 
+**A ladder of strikes is one number line, not twenty boxes.** A spread or a
+total is the same question asked at twenty prices, so it renders as a single
+track you drag: the strikes sit along it by value (so a jump from 40 to 90 yards
+looks like a jump), and the readout shows the line and its price as you move.
+It opens on whichever strike trades nearest 50¢ — the one the book is genuinely
+undecided about. Dragging tracks the pointer 1:1 with no transition, so the knob
+never lags behind the finger, and the track is a real `role="slider"` that
+responds to arrow keys, Home and End. Ladders shorter than four strikes stay as
+boxes, where a slider would be more work than just reading them.
+
 Inside a game, **each market type is drawn in the shape that suits it**, rather
 than as one uniform list of rows. A moneyline becomes a head-to-head box with both teams'
 implied probability set large. Spreads, totals and team totals become ladders
