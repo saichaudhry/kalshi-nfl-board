@@ -116,7 +116,7 @@ The interface shows Kalshi's own conventions — prices in cents, where `67¢`
 means the market thinks it's 67% likely, with YES/NO both quoted — plus a
 probability bar and the price change since the previous close.
 
-**Games are a grid, not a list of dropdowns.** Every game is a box laid out
+**Games, players and futures are all grids.** Every game is a box laid out
 left-to-right and top-to-bottom, showing its headline numbers on the face: both
 clubs with their moneyline price, which side is favoured, the spread and the
 total. Nothing has to be opened to compare the slate. The spread and total shown
@@ -134,6 +134,27 @@ undecided about. Dragging tracks the pointer 1:1 with no transition, so the knob
 never lags behind the finger, and the track is a real `role="slider"` that
 responds to arrow keys, Home and End. Ladders shorter than four strikes stay as
 boxes, where a slider would be more work than just reading them.
+
+A player tile carries their club crest and their three busiest stats, each at
+the strike trading nearest 50¢, so you can read a quarterback's passing line off
+the grid. A futures tile leads with the outcomes people actually trade — sorting
+by price alone fills the preview with 100¢ near-certainties that say nothing.
+
+**Only traded markets are shown by default.** Kalshi quotes every strike it
+lists, and about half have never traded; those quotes are real but indicative,
+with a median bid-ask spread of 14¢ against roughly 1¢ on an active market.
+The "Traded only" switch turns them back on.
+
+**Futures are grouped by event, not series.** `KXNFLWINS` holds one event per
+club and every one of them labels its outcomes the same way ("1+ wins", "2+
+wins"), so grouping by series produced a list in which nothing identified the
+team. Grouping by event gives "Pro Football: Dallas Total Wins" its own ladder.
+
+Each block of markets links out to its family on Kalshi. Kalshi documents
+series-level pages only — `https://kalshi.com/markets/kxhighny` in their own
+quick-start guide — and publishes no per-contract URL, so the link appears
+exactly where a block of markets shares one series, and nowhere that it would
+be a guess.
 
 Inside a game, **each market type is drawn in the shape that suits it**, rather
 than as one uniform list of rows. A moneyline becomes a head-to-head box with both teams'

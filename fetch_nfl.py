@@ -134,8 +134,17 @@ def collect(days_ahead, verbose=True):
                     game["title"] = event.get("title")
                 game["markets"].extend(trimmed)
             else:
-                bucket = futures.setdefault(ticker, {
-                    "series": ticker, "title": title, "markets": [],
+                # Group season futures by EVENT, not series. A series like
+                # KXNFLWINS holds one event per club, and every event uses the
+                # same outcome labels ("1+ wins", "2+ wins"), so pooling them
+                # by series produces a list where nothing identifies the team.
+                key = event["event_ticker"]
+                bucket = futures.setdefault(key, {
+                    "event": key,
+                    "series": ticker,
+                    "title": event.get("title") or title,
+                    "subtitle": event.get("sub_title") or "",
+                    "markets": [],
                 })
                 bucket["markets"].extend(trimmed)
 
@@ -181,7 +190,9 @@ def build_snapshot(days_ahead, verbose=True):
         if not game["title"] and game["away"]:
             game["title"] = f"{game['away']} vs {game['home']}"
 
-    futures_list = sorted(futures.values(), key=lambda f: -len(f["markets"]))
+    futures_list = sorted(
+        futures.values(),
+        key=lambda f: (-sum(m["volume"] for m in f["markets"]), f["title"]))
 
     players = {}
     for game in game_list:

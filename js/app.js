@@ -25,7 +25,8 @@ const BET_FILTERS = [
 const state = {
   data: null,
   view: 'games',
-  detail: null,          // game key when a single game is open
+  detail: null,          // {view, key} when one game / player / group is open
+  tradedOnly: true,      // Kalshi quotes strikes nobody has traded; hide those
   query: '',
   openCards: new Set(),
   cardFilter: new Map(),   // card id -> active bet type
@@ -110,6 +111,32 @@ function strikeOf(m) {
     .trim() || label;
 }
 
+
+/* Kalshi quotes every strike it lists, including ones that have never traded
+   -- about half the board. Those quotes are real but indicative: the median
+   bid-ask spread on an untraded market is 14c against roughly 1c on an active
+   one. Hiding them by default keeps the board to prices someone has actually
+   paid. */
+function traded(markets) {
+  return state.tradedOnly ? markets.filter((m) => m.volume > 0) : markets;
+}
+
+/* The series is the ticker up to the first hyphen: KXNFLSPREAD-26SEP17DETBUF-BUF
+   belongs to KXNFLSPREAD. */
+const seriesOf = (market) => (market.ticker || '').split('-')[0];
+
+/* Kalshi documents series-level pages only -- "https://kalshi.com/markets/kxhighny"
+   in their own quick-start guide -- and no per-contract URL is published, so a
+   link is offered exactly where a block of markets shares one series. */
+function kalshiLink(markets) {
+  const all = new Set(markets.map(seriesOf));
+  if (all.size !== 1) return '';
+  const series = [...all][0];
+  if (!series) return '';
+  return `<a class="klink" href="https://kalshi.com/markets/${encodeURIComponent(series.toLowerCase())}"
+             target="_blank" rel="noopener" title="Open ${escapeHtml(series)} on Kalshi">Kalshi ↗</a>`;
+}
+
 /* ---------- panel shapes ---------- */
 
 /* Moneyline: the headline market, so it gets a real head-to-head box
@@ -151,7 +178,8 @@ function h2hPanel(title, markets, order) {
       <div class="h2h-vs">VS</div>
       ${pair[1] ? side(pair[1]) : '<div></div>'}
     </div>
-    ${rest.length ? `<div class="tiles">${rest.map(tile).join('')}</div>` : ''}`);
+    ${rest.length ? `<div class="tiles">${rest.map(tile).join('')}</div>` : ''}`,
+    undefined, markets);
 }
 
 /* A ladder of strikes on one line — spreads, totals, team totals.
@@ -194,13 +222,14 @@ function splitLadder(markets) {
 /* Inside a player's own card every side is that player's name, which the card
    header already says; suppressSide drops that repeated heading. */
 function ladderPanel(title, markets, suppressSide) {
-  return panelShell(title, sumVolume(markets), ladderSides(markets, suppressSide));
+  return panelShell(title, sumVolume(markets), ladderSides(markets, suppressSide),
+                    undefined, markets);
 }
 
 function tilePanel(title, markets) {
   const sorted = [...markets].sort((a, b) => b.volume - a.volume);
   return panelShell(title, sumVolume(markets),
-    `<div class="tiles">${sorted.map(tile).join('')}</div>`);
+    `<div class="tiles">${sorted.map(tile).join('')}</div>`, undefined, markets);
 }
 
 /* Props belong to a person before they belong to a stat, so each
@@ -450,13 +479,14 @@ function tile(m) {
     </div>`;
 }
 
-function panelShell(title, vol, inner, subOverride) {
+function panelShell(title, vol, inner, subOverride, markets) {
   const sub = subOverride ?? (vol ? volume(vol) : '');
   return `
     <section class="panel">
       <header class="panel-head">
         <span class="panel-title">${escapeHtml(title)}</span>
         ${sub ? `<span class="panel-sub">${escapeHtml(sub)}</span>` : ''}
+        ${markets ? kalshiLink(markets) : ''}
       </header>
       <div class="panel-body">${inner || '<div class="panel-empty">Nothing here.</div>'}</div>
     </section>`;
@@ -581,8 +611,9 @@ function matches(text) {
 /* The headline numbers for a game, derived from its own markets rather
    than stored: the book is the source of truth, so the summary can never
    drift from the prices shown inside. */
-function gameSummary(game) {
-  const full = (type) => game.markets.filter(
+function gameSummary(game, pool) {
+  const source = pool || game.markets;
+  const full = (type) => source.filter(
     (m) => m.betType === type && m.segment === 'full');
 
   // Moneyline: the two busiest full-game markets are the two clubs.
@@ -638,7 +669,7 @@ function gameSummary(game) {
 }
 
 function gameTile(game, markets) {
-  const s = gameSummary(game);
+  const s = gameSummary(game, markets);
   const teams = TEAMS;
 
   const row = (code, price) => {
@@ -660,7 +691,7 @@ function gameTile(game, markets) {
     </div>`;
 
   return `
-    <button class="gcard" data-game="${escapeHtml(game.key)}">
+    <button class="gcard" data-open="games" data-key="${escapeHtml(game.key)}">
       <div class="gcard-top">
         <span class="gcard-when">${escapeHtml(gameDay(game.date))}</span>
         <span class="gcard-count">${markets.length}</span>
@@ -678,23 +709,27 @@ function visibleGames() {
   return state.data.games
     .filter((g) => matches(g.title) || matches(g.away) || matches(g.home)
       || (state.query && g.markets.some((m) => matches(m.label) || matches(m.player))))
-    .map((g) => [g, marketsForGame(g)]);
+    .map((g) => [g, marketsForGame(g)])
+    .filter(([, markets]) => markets.length);
 }
 
 function marketsForGame(game) {
-  if (!state.query) return game.markets;
+  const pool = traded(game.markets);
+  if (!state.query) return pool;
   // A search narrows the markets inside a game too, so looking for a player
   // surfaces their lines rather than the game's full book.
-  if (matches(game.title) || matches(game.away) || matches(game.home)) return game.markets;
-  return game.markets.filter((m) => matches(m.label) || matches(m.player));
+  if (matches(game.title) || matches(game.away) || matches(game.home)) return pool;
+  return pool.filter((m) => matches(m.label) || matches(m.player));
 }
 
 function viewGames() {
-  if (state.detail) return gameDetail(state.detail);
+  if (state.detail?.view === 'games') return gameDetail(state.detail.key);
 
   const games = visibleGames();
   if (!games.length) {
-    return emptyState('No games match', 'Try a team name like "Bills", or clear the search.');
+    return emptyState('No games match', state.tradedOnly
+      ? 'Nothing traded yet. Turn off "Traded only" to see quoted lines.'
+      : 'Try a team name like "Bills", or clear the search.');
   }
   return `<div class="grid">${games.map(([g, m]) => gameTile(g, m)).join('')}</div>`;
 }
@@ -704,23 +739,12 @@ function gameDetail(key) {
   if (!game) return emptyState('Game not found', 'It may have closed since this snapshot.');
 
   const markets = marketsForGame(game);
-  return `
-    <div class="detail-bar">
-      <button class="back" data-back="1">
-        <svg width="8" height="13" viewBox="0 0 9 14" fill="none" aria-hidden="true">
-          <path d="M7.5 1L2 7l5.5 6" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>All games
-      </button>
-      <span class="detail-title">
-        ${game.away ? teamLogo(game.away, 26) : ''}${game.home ? teamLogo(game.home, 26) : ''}
-        <span class="detail-name">${escapeHtml(game.title || key)}</span>
-      </span>
-      <span class="detail-when" style="margin-inline-start:auto">
-        ${escapeHtml(gameDay(game.date))} · ${markets.length} markets
-      </span>
-    </div>
-    ${cardBody(key, markets, 'game')}`;
+  return detailShell(
+    `${game.away ? teamLogo(game.away, 26) : ''}${game.home ? teamLogo(game.home, 26) : ''}`,
+    game.title || key,
+    `${gameDay(game.date)} · ${markets.length} markets`,
+    cardBody(key, markets, 'game'),
+  );
 }
 
 /* Players are derived in the browser rather than precomputed, so the
@@ -739,42 +763,174 @@ function buildPlayers() {
   return [...byPlayer.values()].sort((a, b) => b.markets.length - a.markets.length);
 }
 
-function viewPlayers() {
-  const players = buildPlayers().filter((p) =>
-    matches(p.name) || (state.query && p.markets.some((m) => matches(m.label))));
+function visiblePlayers() {
+  return buildPlayers()
+    .map((p) => ({ ...p, markets: traded(p.markets) }))
+    .filter((p) => p.markets.length)
+    .filter((p) => matches(p.name)
+      || (state.query && p.markets.some((m) => matches(m.label)))
+      || (state.query && (matches(p.game.title) || matches(p.game.away) || matches(p.game.home))));
+}
 
-  if (!players.length) {
-    return emptyState('No players match',
-      'Player props are usually posted a few days before kickoff.');
+/* A player's headline lines: the busiest stats, each shown at the strike
+   trading nearest 50c, so the tile says something before it is opened. */
+function playerHeadlines(markets, limit = 3) {
+  const byStat = new Map();
+  for (const m of markets) {
+    if (!byStat.has(m.typeLabel)) byStat.set(m.typeLabel, []);
+    byStat.get(m.typeLabel).push(m);
   }
 
-  return players.map((p) => {
-    // The team comes from the market ticker, so it stays correct through
-    // trades in a way a hardcoded roster would not.
-    const team = p.markets.find((m) => m.team)?.team;
-    return card(
-      `player:${p.name}`,
-      p.name,
-      `${p.game.title || p.game.key} · ${gameDay(p.game.date)}`,
-      p.markets.length,
-      p.markets,
-      team ? `<span class="crests">${teamLogo(team, 28)}</span>` : '',
-    );
+  return [...byStat.entries()]
+    .sort((a, b) => sumVolume(b[1]) - sumVolume(a[1]))
+    .slice(0, limit)
+    .map(([stat, rows]) => {
+      let pick = null;
+      let gap = Infinity;
+      for (const m of rows) {
+        const mid = midpoint(m);
+        if (mid === null) continue;
+        if (Math.abs(mid - 50) < gap) { gap = Math.abs(mid - 50); pick = m; }
+      }
+      if (!pick) return null;
+      const line = (pick.label.match(/(\d+(?:\.\d+)?)/) || [])[1];
+      return { stat, line, price: midpoint(pick) };
+    })
+    .filter(Boolean);
+}
+
+function playerTile(player) {
+  const team = player.markets.find((m) => m.team)?.team;
+  const lines = playerHeadlines(player.markets);
+
+  return `
+    <button class="gcard" data-open="players" data-key="${escapeHtml(player.name)}">
+      <div class="ptile-head">
+        ${team ? teamLogo(team, 26) : ''}
+        <span class="ptile-name">${escapeHtml(player.name)}</span>
+        <span class="gcard-count">${player.markets.length}</span>
+      </div>
+      <div class="ptile-sub">${escapeHtml(player.game.title || player.game.key)} · ${escapeHtml(gameDay(player.game.date))}</div>
+      <div class="ptile-lines">
+        ${lines.map((l) => `
+          <span class="ptile-line">
+            <span class="ptile-stat">${escapeHtml(l.stat)}</span>
+            <span class="ptile-val">${escapeHtml(l.line ?? '')}</span>
+            <span class="ptile-price">${l.price}¢</span>
+          </span>`).join('') || '<span class="ptile-line"><span class="ptile-stat">No priced lines</span></span>'}
+      </div>
+    </button>`;
+}
+
+function viewPlayers() {
+  if (state.detail?.view === 'players') return playerDetail(state.detail.key);
+
+  const players = visiblePlayers();
+  if (!players.length) {
+    return emptyState('No players match',
+      state.tradedOnly
+        ? 'Nothing traded yet. Turn off "Traded only" to see quoted lines.'
+        : 'Player props are usually posted a few days before kickoff.');
+  }
+  return `<div class="grid">${players.map(playerTile).join('')}</div>`;
+}
+
+function playerDetail(name) {
+  const player = buildPlayers().find((p) => p.name === name);
+  if (!player) return emptyState('Player not found', 'They may have no open markets in this snapshot.');
+
+  const markets = traded(player.markets);
+  const team = markets.find((m) => m.team)?.team;
+  return detailShell(
+    `${team ? teamLogo(team, 26) : ''}`,
+    name,
+    `${player.game.title || player.game.key} · ${gameDay(player.game.date)} · ${markets.length} markets`,
+    cardBody(`player:${name}`, markets, 'player'),
+  );
+}
+
+/* ---- Futures ---- */
+
+function visibleFutures() {
+  return state.data.futures
+    .map((f) => ({ ...f, markets: traded(f.markets) }))
+    .filter((f) => f.markets.length)
+    .filter((f) => matches(f.title) || matches(f.subtitle)
+      || (state.query && f.markets.some((m) => matches(m.label))));
+}
+
+function futuresTile(group) {
+  // Lead with what people actually trade. Sorting by price alone fills the
+  // preview with 100c near-certainties, which say nothing about the market.
+  const top = [...group.markets]
+    .filter((m) => midpoint(m) !== null)
+    .sort((a, b) => (b.volume - a.volume) || (midpoint(b) - midpoint(a)))
+    .slice(0, 3);
+
+  const rows = top.map((m) => {
+    const code = teamCodeFromLabel(m.label);
+    return `
+      <span class="ftile-row">
+        ${code ? teamLogo(code, 20) : ''}
+        <span class="ftile-name">${escapeHtml(m.label)}</span>
+        <span class="ftile-price">${midpoint(m)}¢</span>
+      </span>`;
   }).join('');
+
+  const more = group.markets.length - top.length;
+  return `
+    <button class="gcard" data-open="futures" data-key="${escapeHtml(group.event)}">
+      <div class="gcard-top">
+        <span class="gcard-when">Season</span>
+        <span class="gcard-count">${group.markets.length}</span>
+      </div>
+      <div class="ftile-title">${escapeHtml(group.title)}</div>
+      <div class="ftile-sub">${escapeHtml(group.subtitle || group.series)}</div>
+      <div class="ftile-rows">${rows || '<span class="ftile-row"><span class="ftile-name">No priced outcomes</span></span>'}</div>
+      ${more > 0 ? `<div class="ftile-more">+${more} more</div>` : ''}
+    </button>`;
 }
 
 function viewFutures() {
-  const groups = state.data.futures.filter((f) =>
-    matches(f.title) || (state.query && f.markets.some((m) => matches(m.label))));
+  if (state.detail?.view === 'futures') return futuresDetail(state.detail.key);
 
-  if (!groups.length) return emptyState('No futures match', 'Clear the search to see season-long markets.');
+  const groups = visibleFutures();
+  if (!groups.length) {
+    return emptyState('No futures match',
+      state.tradedOnly
+        ? 'Nothing traded yet. Turn off "Traded only" to see quoted lines.'
+        : 'Clear the search to see season-long markets.');
+  }
+  return `<div class="grid">${groups.map(futuresTile).join('')}</div>`;
+}
 
-  return groups.map((f) => {
-    const markets = state.query
-      ? f.markets.filter((m) => matches(m.label) || matches(f.title))
-      : f.markets;
-    return card(f.series, f.title, 'Season-long market', markets.length, markets);
-  }).join('');
+function futuresDetail(eventTicker) {
+  const group = state.data.futures.find((f) => f.event === eventTicker);
+  if (!group) return emptyState('Market not found', 'It may have settled since this snapshot.');
+
+  const markets = traded(group.markets);
+  return detailShell('', group.title,
+    `${group.subtitle || group.series} · ${markets.length} markets`,
+    cardBody(eventTicker, markets, 'futures'));
+}
+
+/* The bar every detail view shares: back out, say what you are looking at. */
+function detailShell(crests, title, meta, body) {
+  return `
+    <div class="detail-bar">
+      <button class="back" data-back="1">
+        <svg width="8" height="13" viewBox="0 0 9 14" fill="none" aria-hidden="true">
+          <path d="M7.5 1L2 7l5.5 6" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>Back
+      </button>
+      <span class="detail-title">
+        ${crests}
+        <span class="detail-name">${escapeHtml(title)}</span>
+      </span>
+      <span class="detail-when" style="margin-inline-start:auto">${escapeHtml(meta)}</span>
+    </div>
+    ${body}`;
 }
 
 function emptyState(title, body) {
@@ -786,6 +942,7 @@ function render() {
   const views = { games: viewGames, players: viewPlayers, futures: viewFutures };
   main.innerHTML = (views[state.view] || viewGames)();
   initNumberLines();
+  paintCounts();
 }
 
 /* ---------- chrome ---------- */
@@ -807,9 +964,7 @@ function paintHeader() {
   $('#freshness').innerHTML =
     `<span class="dot ${stale ? 'stale' : ''}"></span>${relativeTime(fetchedAt)}`;
 
-  $('#subhead').textContent =
-    `${stats.markets.toLocaleString()} open markets · ${stats.games} upcoming games · `
-    + `${stats.players} players · ${stats.futures} season futures`;
+  paintCounts();
 
   if (stale) {
     // A visitor on the hosted site cannot run the fetcher, so only show the
@@ -828,14 +983,41 @@ function paintHeader() {
   }
 }
 
+
+/* The subhead describes what is actually on screen. With "Traded only" on it
+   would otherwise advertise counts far larger than the board shows. */
+function paintCounts() {
+  if (!state.data) return;
+  const { stats } = state.data;
+
+  if (!state.tradedOnly) {
+    $('#subhead').textContent =
+      `${stats.markets.toLocaleString()} open markets · ${stats.games} upcoming games · `
+      + `${stats.players} players · ${stats.futures} season futures`;
+    return;
+  }
+
+  const games = state.data.games.filter((g) => g.markets.some((m) => m.volume > 0)).length;
+  const marketCount = state.data.games.reduce((n, g) => n + traded(g.markets).length, 0)
+    + state.data.futures.reduce((n, f) => n + traded(f.markets).length, 0);
+  const players = new Set(state.data.games
+    .flatMap((g) => traded(g.markets))
+    .map((m) => m.player).filter(Boolean)).size;
+  const futures = state.data.futures.filter((f) => f.markets.some((m) => m.volume > 0)).length;
+
+  $('#subhead').textContent =
+    `${marketCount.toLocaleString()} traded markets · ${games} upcoming games · `
+    + `${players} players · ${futures} season futures`;
+}
+
 /* ---------- events ---------- */
 
 /* Opening a game pushes a history entry, so the browser and the phone's
    back gesture leave the detail instead of leaving the site. */
-function openDetail(key) {
-  state.detail = key;
+function openDetail(view, key) {
+  state.detail = { view, key };
   state.cardFilter.delete(key);
-  history.pushState({ detail: key }, '', `#${key}`);
+  history.pushState({ detail: { view, key } }, '', `#${view}/${encodeURIComponent(key)}`);
   render();
   window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 }
@@ -855,14 +1037,24 @@ window.addEventListener('popstate', (e) => {
   render();
 });
 
+/* "#games/26SEP17DETBUF" and "#players/Josh%20Allen" open straight into a
+   detail view, so any game or player can be linked to directly. */
+function detailFromHash() {
+  const raw = location.hash.slice(1);
+  if (!raw.includes('/')) return null;
+  const [view, ...rest] = raw.split('/');
+  const key = decodeURIComponent(rest.join('/'));
+  return ['games', 'players', 'futures'].includes(view) ? { view, key } : null;
+}
+
 
 
 /* One delegated listener rather than a listener per row: with ~12,000
    markets on the page, per-row handlers would be the slowest thing here. */
 document.addEventListener('click', (e) => {
-  const tile = e.target.closest('[data-game]');
+  const tile = e.target.closest('[data-open]');
   if (tile) {
-    openDetail(tile.dataset.game);
+    openDetail(tile.dataset.open, tile.dataset.key);
     return;
   }
 
@@ -918,7 +1110,7 @@ function currentMarketsFor(id) {
   if (id.startsWith('player:')) {
     const name = id.slice(7);
     const p = buildPlayers().find((x) => x.name === name);
-    return p ? p.markets : [];
+    return p ? traded(p.markets) : [];
   }
   const game = state.data.games.find((g) => g.key === id);
   if (game) {
@@ -927,8 +1119,8 @@ function currentMarketsFor(id) {
           || matches(game.title) || matches(game.away) || matches(game.home))
       : game.markets;
   }
-  const fut = state.data.futures.find((f) => f.series === id);
-  return fut ? fut.markets : [];
+  const fut = state.data.futures.find((f) => f.event === id);
+  return fut ? traded(fut.markets) : [];
 }
 
 $('#tabs').addEventListener('click', (e) => {
@@ -955,6 +1147,12 @@ $('#search').addEventListener('input', (e) => {
     if (value) state.detail = null;
     render();
   }, 120);
+});
+
+$('#traded').addEventListener('click', () => {
+  state.tradedOnly = !state.tradedOnly;
+  $('#traded').setAttribute('aria-checked', String(state.tradedOnly));
+  render();
 });
 
 window.addEventListener('resize', moveThumb);
@@ -985,9 +1183,13 @@ async function boot() {
     return;
   }
 
-  const deepLink = location.hash.slice(1);
-  if (deepLink && state.data.games.some((g) => g.key === deepLink)) {
-    state.detail = deepLink;
+  const deep = detailFromHash();
+  if (deep) {
+    state.detail = deep;
+    state.view = deep.view;
+    for (const b of $('#tabs').querySelectorAll('[data-view]')) {
+      b.setAttribute('aria-selected', String(b.dataset.view === deep.view));
+    }
   }
 
   paintHeader();

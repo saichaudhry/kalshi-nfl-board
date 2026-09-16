@@ -25,9 +25,15 @@
       <button role="tab" data-view="futures" aria-selected="false">Futures</button>
     </div>
 
-    <input class="search" id="search" type="search" autocomplete="off"
-           placeholder="Search teams, players, or markets…"
-           aria-label="Search markets">
+    <div class="controls">
+      <input class="search" id="search" type="search" autocomplete="off"
+             placeholder="Search teams, players, or markets…"
+             aria-label="Search markets">
+      <button class="toggle" id="traded" role="switch" aria-checked="true"
+              title="Kalshi quotes every strike, including ones nobody has traded yet">
+        <span class="toggle-dot"></span>Traded only
+      </button>
+    </div>
   </div>
 </header>
 

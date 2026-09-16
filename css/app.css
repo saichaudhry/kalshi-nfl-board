@@ -1133,3 +1133,153 @@ footer a { color: var(--text-2); }
   .nline-fill, .nline-knob { transition: none; }
   .nline.dragging .nline-knob { transform: translateY(-50%); }
 }
+
+/* ============================================================
+   Traded-only switch, tiles for players and futures
+   ============================================================ */
+
+.controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.controls .search { margin-bottom: 0; }
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 9px 13px;
+  border-radius: var(--radius-s);
+  background: var(--fill);
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-2);
+  white-space: nowrap;
+  transition: background 140ms var(--ease-settle),
+              color 140ms var(--ease-settle),
+              transform 120ms var(--ease-settle);
+}
+.toggle:active { transform: scale(0.97); }
+.toggle[aria-checked="true"] { color: var(--text); background: var(--fill-strong); }
+
+.toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: background 140ms var(--ease-settle),
+              box-shadow 140ms var(--ease-settle);
+}
+.toggle[aria-checked="true"] .toggle-dot {
+  background: var(--yes);
+  box-shadow: 0 0 0 3px var(--yes-bg);
+}
+
+/* A market family's page on Kalshi. Kalshi documents series-level URLs
+   only, which is exactly the granularity a panel represents. */
+.klink {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: color 140ms var(--ease-settle);
+}
+.klink:hover { color: var(--accent); }
+
+.panel-head .klink { margin-inline-start: 10px; }
+
+/* ---- Player tiles ---- */
+.ptile-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+}
+
+.ptile-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ptile-sub {
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-bottom: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A couple of that player's headline lines, so the tile says something
+   before it is opened. */
+.ptile-lines { display: flex; flex-direction: column; gap: 5px; }
+
+.ptile-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.ptile-stat {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ptile-val { font-weight: 650; }
+.ptile-price { font-weight: 700; color: var(--yes); min-width: 34px; text-align: right; }
+
+/* ---- Futures tiles ---- */
+.ftile-title {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-bottom: 3px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ftile-sub {
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+
+.ftile-rows { display: flex; flex-direction: column; gap: 6px; }
+
+.ftile-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.ftile-row .logo { --logo-size: 20px; }
+
+.ftile-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ftile-price { font-weight: 700; color: var(--yes); }
+
+.ftile-more {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
