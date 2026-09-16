@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Gridiron Board — every NFL market on Kalshi</title>
-<meta name="description" content="Live prices for every upcoming NFL prediction market on Kalshi, sorted by game, bet type and player.">
+<title>Gridiron Board — every sports market on Kalshi</title>
+<meta name="description" content="Live prices for every upcoming sports prediction market on Kalshi, with live scores, sorted by game, bet type and player.">
 <link rel="stylesheet" href="css/app.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
 </head>
@@ -18,11 +18,14 @@
     </div>
     <p class="subhead" id="subhead">Loading markets…</p>
 
+    <div class="sports" id="sports" role="tablist" aria-label="Sport"></div>
+
     <div class="segmented" id="tabs" role="tablist">
       <span class="seg-thumb" id="thumb"></span>
       <button role="tab" data-view="games"   aria-selected="true">Games</button>
       <button role="tab" data-view="players" aria-selected="false">Players</button>
       <button role="tab" data-view="futures" aria-selected="false">Futures</button>
+      <button role="tab" data-view="trades"  aria-selected="false" id="tradesTab" hidden>My Trades</button>
     </div>
 
     <div class="controls">
@@ -46,12 +49,15 @@
 <footer class="wrap">
   <p>
     Prices from the <a href="https://kalshi.com" target="_blank" rel="noopener">Kalshi</a>
-    public market-data API. Not affiliated with Kalshi. For coursework, not for trading.<br>
+    public market-data API; live scores from ESPN. Not affiliated with either.
+    For coursework, not for trading.<br>
     Built for CMU 15-113 · <span id="built"></span>
   </p>
 </footer>
 
 <script src="js/teams.js"></script>
+<script src="js/sportbar.js"></script>
+<script src="js/trades.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

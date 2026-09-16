@@ -23,7 +23,13 @@ const BET_FILTERS = [
 ];
 
 const state = {
-  data: null,
+  index: null,           // data/index.json — the list of sports
+  data: null,            // the active sport's snapshot
+  sport: null,           // active sport key
+  private: null,         // your fills, local only; null on the public site
+  mine: new Set(),       // sports you have traded
+  scores: new Map(),     // live ESPN scores for the active sport
+  sportPrefixes: {},     // sport key -> Kalshi ticker prefixes
   view: 'games',
   detail: null,          // {view, key} when one game / player / group is open
   tradedOnly: true,      // Kalshi quotes strikes nobody has traded; hide those
@@ -159,9 +165,8 @@ function h2hPanel(title, markets, order) {
 
   const side = (m) => {
     const mid = midpoint(m);
-    // Moneyline markets are labelled in prose ("Buffalo"), so the crest is
-    // resolved from the text rather than a code the market does not carry.
-    const code = teamCodeFromLabel(m.label);
+    // The ticker names the club exactly; prose is the fallback.
+    const code = teamCodeFromTicker(m.ticker) || teamCodeFromLabel(m.label);
     return `
       <div class="h2h-side">
         ${code ? `<div class="h2h-crest">${teamLogo(code, 40)}</div>` : ''}
@@ -616,14 +621,18 @@ function gameSummary(game, pool) {
   const full = (type) => source.filter(
     (m) => m.betType === type && m.segment === 'full');
 
-  // Moneyline: the two busiest full-game markets are the two clubs.
+  // Which club a moneyline market is for. The ticker's last segment names it
+  // exactly; the prose label is only a fallback for markets that lack one.
+  const sides = [game.away, game.home].filter(Boolean);
+  const codeOf = (m) => teamCodeFromTicker(m.ticker, sides) || teamCodeFromLabel(m.label);
+
   const money = full('moneyline')
-    .filter((m) => teamCodeFromLabel(m.label))
+    .filter((m) => codeOf(m))
     .sort((a, b) => b.volume - a.volume)
     .slice(0, 2);
 
   const priceFor = (code) => {
-    const hit = money.find((m) => teamCodeFromLabel(m.label) === code);
+    const hit = money.find((m) => codeOf(m) === code);
     return hit ? midpoint(hit) : null;
   };
 
@@ -647,7 +656,8 @@ function gameSummary(game, pool) {
   let spread = null;
   if (spreadMarket) {
     const line = (spreadMarket.label.match(/(\d+(?:\.\d+)?)/) || [])[1];
-    const code = teamCodeFromLabel(spreadMarket.label);
+    const code = teamCodeFromTicker(spreadMarket.ticker, sides)
+      || teamCodeFromLabel(spreadMarket.label);
     if (line) spread = code ? `${code} -${line}` : `-${line}`;
   }
 
@@ -672,17 +682,38 @@ function gameTile(game, markets) {
   const s = gameSummary(game, markets);
   const teams = TEAMS;
 
+  // ESPN is matched on the two team abbreviations, the only field it and
+  // Kalshi reliably share.
+  const live = Board.scoreFor(state.scores, game.away, game.home);
+  const scoreOf = (code) => live?.sides.find((x) => x.abbr === String(code).toUpperCase());
+
   const row = (code, price) => {
-    const team = teams[code];
-    const name = team ? `${team.city} ${team.nick}` : (code || '—');
+    const registry = state.data.teams || {};
+    const nfl = teams[code];
+    const name = registry[code]?.name
+      || (nfl ? `${nfl.city} ${nfl.nick}` : (code || '—'));
     const fav = s.favourite === code ? ' fav' : '';
+    const side = scoreOf(code);
+    const winning = side && live.state !== 'pre'
+      && live.sides.every((o) => o === side || (side.score ?? 0) >= (o.score ?? 0));
+
     return `
-      <div class="gteam${fav}">
+      <div class="gteam${fav}${winning ? ' winning' : ''}">
         ${teamLogo(code, 26)}
         <span class="gteam-name">${escapeHtml(name)}</span>
+        ${side && side.score !== null && live.state !== 'pre'
+          ? `<span class="gteam-score">${side.score}</span>` : ''}
         <span class="gteam-price">${price === null ? '—' : `${price}¢`}</span>
       </div>`;
   };
+
+  // A game in progress says so; a finished one says so quietly.
+  let status = '';
+  if (live && live.state === 'in') {
+    status = `<span class="score"><span class="score-live">${escapeHtml(live.detail || 'Live')}</span></span>`;
+  } else if (live && live.completed) {
+    status = `<span class="score"><span class="score-final">Final</span></span>`;
+  }
 
   const line = (key, value) => `
     <div class="gline">
@@ -694,6 +725,7 @@ function gameTile(game, markets) {
     <button class="gcard" data-open="games" data-key="${escapeHtml(game.key)}">
       <div class="gcard-top">
         <span class="gcard-when">${escapeHtml(gameDay(game.date))}</span>
+        ${status}
         <span class="gcard-count">${markets.length}</span>
       </div>
       ${row(game.away, s.away)}
@@ -939,7 +971,8 @@ function emptyState(title, body) {
 
 function render() {
   if (!state.data) return;
-  const views = { games: viewGames, players: viewPlayers, futures: viewFutures };
+  const views = { games: viewGames, players: viewPlayers,
+                  futures: viewFutures, trades: viewTrades };
   main.innerHTML = (views[state.view] || viewGames)();
   initNumberLines();
   paintCounts();
@@ -1149,6 +1182,11 @@ $('#search').addEventListener('input', (e) => {
   }, 120);
 });
 
+$('#sports').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-sport]');
+  if (chip && chip.dataset.sport !== state.sport) selectSport(chip.dataset.sport);
+});
+
 $('#traded').addEventListener('click', () => {
   state.tradedOnly = !state.tradedOnly;
   $('#traded').setAttribute('aria-checked', String(state.tradedOnly));
@@ -1159,15 +1197,85 @@ window.addEventListener('resize', moveThumb);
 
 /* ---------- boot ---------- */
 
+/* Kalshi ticker prefixes per sport, mirroring sports.py so the browser can
+   attribute a fill to a league without another round trip. */
+const SPORT_PREFIXES = {
+  nfl:   ['KXNFL', 'KXLEADERNFL', 'KXSTARTINGQB', 'KXNEXTNFL'],
+  ncaaf: ['KXNCAAF'],
+  mlb:   ['KXMLB', 'KXLEADERMLB'],
+  wnba:  ['KXWNBA', 'KXLEADERWNBA'],
+  nba:   ['KXNBA', 'KXLEADERNBA'],
+  nhl:   ['KXNHL', 'KXLEADERNHL'],
+  atp:   ['KXATP'],
+  wta:   ['KXWTA'],
+};
+
+/* Longest prefix wins, so KXWNBA is never read as KXNBA. */
+function sportOfTicker(ticker) {
+  const t = (ticker || '').toUpperCase();
+  let best = null;
+  let len = 0;
+  for (const [key, prefixes] of Object.entries(SPORT_PREFIXES)) {
+    for (const prefix of prefixes) {
+      if (t.startsWith(prefix) && prefix.length > len) { best = key; len = prefix.length; }
+    }
+  }
+  return best;
+}
+
+function paintSportBar() {
+  const bar = $('#sports');
+  if (!bar || !state.index) return;
+
+  bar.innerHTML = state.index.sports.map((sport) => {
+    const mine = state.mine.has(sport.key);
+    return `<button class="sport${mine ? ' sport-mine' : ''}" role="tab"
+              aria-selected="${sport.key === state.sport}" data-sport="${sport.key}"
+              title="${escapeHtml(sport.name)}${mine ? ' — you have traded this' : ''}">
+              ${escapeHtml(sport.label)}
+              <span class="sport-count">${sport.stats.games}</span>
+            </button>`;
+  }).join('');
+}
+
+async function selectSport(key) {
+  const entry = state.index.sports.find((s) => s.key === key);
+  if (!entry) return;
+
+  state.sport = key;
+  state.detail = null;
+  state.openCards.clear();
+  paintSportBar();
+
+  main.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+
+  const response = await fetch(`data/${entry.file}`, { cache: 'no-cache' });
+  state.data = await response.json();
+  setTeamRegistry(state.data.teams);
+
+  // Snapshot scores render immediately; a live attempt may upgrade them.
+  state.scores = Board.scoresFromSnapshot(state.data);
+
+  paintHeader();
+  render();
+
+  Board.refreshScores(entry.espn, state.scores).then((scores) => {
+    // Ignore a late reply for a sport the user has already navigated away from.
+    if (state.sport !== key || scores === state.scores) return;
+    state.scores = scores;
+    render();
+  });
+}
+
 async function boot() {
   try {
-    const response = await fetch(SNAPSHOT_URL, { cache: 'no-cache' });
+    const response = await fetch('data/index.json', { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    state.data = await response.json();
+    state.index = await response.json();
   } catch (err) {
     main.innerHTML = emptyState(
       'Could not load the market snapshot',
-      'Run "python3 fetch_nfl.py" to create data/snapshot.json, then serve the '
+      'Run "python3 fetch_markets.py" to create the data files, then serve the '
       + 'folder with "python3 -m http.server". Opening index.html directly from '
       + 'the filesystem will not work, because browsers block fetch() on file:// URLs.',
     );
@@ -1176,26 +1284,31 @@ async function boot() {
     return;
   }
 
-  if (!state.data.games?.length && !state.data.futures?.length) {
-    paintHeader();
-    main.innerHTML = emptyState('No open NFL markets',
-      'Kalshi lists no NFL markets right now. This is normal between February and August.');
-    return;
+  state.sportPrefixes = SPORT_PREFIXES;
+
+  // Your fills, if this is your machine. A 404 is the normal case elsewhere.
+  state.private = await Board.loadPrivate();
+  if (state.private) {
+    state.mine = Board.tradedSports(state.private, sportOfTicker);
+    $('#tradesTab').hidden = false;
   }
 
   const deep = detailFromHash();
+  // Prefer a sport you trade, so the board opens on something you care about.
+  const preferred = state.index.sports.find((s) => state.mine.has(s.key))
+    || state.index.sports[0];
+
+  await selectSport(preferred.key);
+
   if (deep) {
     state.detail = deep;
     state.view = deep.view;
     for (const b of $('#tabs').querySelectorAll('[data-view]')) {
       b.setAttribute('aria-selected', String(b.dataset.view === deep.view));
     }
+    moveThumb();
+    render();
   }
-
-  paintHeader();
-  $('#built').textContent = `snapshot ${new Date(state.data.fetchedAt).toLocaleString()}`;
-  moveThumb();
-  render();
 }
 
 boot();

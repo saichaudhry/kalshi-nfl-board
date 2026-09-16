@@ -9,10 +9,15 @@ which bet type, which period of play, and which player.
 
 import re
 
+import sports
+
 # An event that belongs to a specific game encodes it in the ticker as
 # KXNFLSPREAD-26SEP17DETBUF -> date 26SEP17, teams DETBUF. Anything without this
 # shape is a season-long future (division winners, MVP, season win totals).
-GAME_KEY_RE = re.compile(r"-(\d{2}[A-Z]{3}\d{2}[A-Z]{4,10})$")
+# Baseball tickers carry a first-pitch time that football's do not:
+# KXMLBGAME-26SEP161840ATHTB is 26SEP16 + 1840 + ATHTB. The time is optional
+# so the same pattern reads both, and team codes run from 2 letters (TB) to 4.
+GAME_KEY_RE = re.compile(r"-(\d{2}[A-Z]{3}\d{2}(?:\d{4})?[A-Z]{3,12})$")
 
 # Event sub_titles read "DET vs BUF (Sep 17)" across every game series, which is
 # a more reliable away/home split than slicing the 6-10 char team blob (team
@@ -34,11 +39,32 @@ NOT_A_PLAYER_RE = re.compile(
 # initials ("DJ Moore", "CJ Stroud", "TJ Watt" all match "[A-Z]{2,4} [A-Z][a-z]"),
 # so the nickname is checked against the actual league instead of guessed at.
 TEAM_NICKNAMES = {
+    # NFL
     "Cardinals", "Falcons", "Ravens", "Bills", "Panthers", "Bears", "Bengals",
     "Browns", "Cowboys", "Broncos", "Lions", "Packers", "Texans", "Colts",
     "Jaguars", "Chiefs", "Raiders", "Chargers", "Rams", "Dolphins", "Vikings",
     "Patriots", "Saints", "Giants", "Jets", "Eagles", "Steelers", "49ers",
     "Seahawks", "Buccaneers", "Titans", "Commanders",
+    # MLB
+    "Diamondbacks", "Braves", "Orioles", "Red Sox", "Cubs", "White Sox", "Reds",
+    "Guardians", "Rockies", "Tigers", "Astros", "Royals", "Angels", "Dodgers",
+    "Marlins", "Brewers", "Twins", "Mets", "Yankees", "Athletics", "Phillies",
+    "Pirates", "Padres", "Mariners", "Cardinals", "Rays", "Rangers", "Blue Jays",
+    "Nationals",
+    # NBA / WNBA
+    "Hawks", "Celtics", "Nets", "Hornets", "Bulls", "Cavaliers", "Mavericks",
+    "Nuggets", "Pistons", "Warriors", "Rockets", "Pacers", "Clippers", "Lakers",
+    "Grizzlies", "Heat", "Bucks", "Timberwolves", "Pelicans", "Knicks",
+    "Thunder", "Magic", "76ers", "Suns", "Trail Blazers", "Kings", "Spurs",
+    "Raptors", "Jazz", "Wizards",
+    "Dream", "Sky", "Sun", "Wings", "Fever", "Aces", "Sparks", "Lynx",
+    "Liberty", "Mercury", "Storm", "Mystics", "Valkyries",
+    # NHL
+    "Ducks", "Coyotes", "Bruins", "Sabres", "Flames", "Hurricanes", "Blackhawks",
+    "Avalanche", "Blue Jackets", "Stars", "Oilers", "Panthers", "Kraken",
+    "Wild", "Canadiens", "Predators", "Devils", "Islanders", "Senators",
+    "Flyers", "Penguins", "Sharks", "Blues", "Lightning", "Maple Leafs",
+    "Canucks", "Golden Knights", "Capitals", "Jets",
 }
 TEAM_NAME_RE = re.compile(r"^[A-Z0-9]{2,4}\s+(\w+)$")
 
@@ -79,8 +105,23 @@ BET_TYPES = [
 ]
 
 # Series whose markets are per-player statistics. Matched on the part of the
-# ticker after the KXNFL prefix.
+# ticker after the league prefix. Football stats first, then the stats the
+# other covered sports price -- a "STRIKEOUTS" market is a player prop in
+# exactly the same way a "PASSYDS" one is.
 PROP_KEYS = [
+    # Baseball
+    ("STRIKEOUT", "Strikeouts"), ("HOMERUN", "Home Runs"), ("HR", "Home Runs"),
+    ("HITS", "Hits"), ("RBI", "RBIs"), ("BASES", "Total Bases"),
+    ("EARNEDRUN", "Earned Runs"), ("WALKS", "Walks"), ("STOLEN", "Stolen Bases"),
+    # Basketball
+    ("POINTS", "Points"), ("REBOUND", "Rebounds"), ("ASSIST", "Assists"),
+    ("THREES", "Three Pointers"), ("BLOCKS", "Blocks"), ("STEALS", "Steals"),
+    ("DOUBLEDOUBLE", "Double Double"), ("TRIPLEDOUBLE", "Triple Double"),
+    # Hockey
+    ("GOALS", "Goals"), ("SAVES", "Saves"), ("SHOTS", "Shots"),
+    # Tennis
+    ("ACES", "Aces"), ("SETS", "Sets"), ("GAMESWON", "Games Won"),
+
     ("PASSYDS", "Passing Yards"), ("PASSTD", "Passing TDs"),
     ("PASSATT", "Pass Attempts"), ("PASSCOMP", "Completions"),
     ("PASSINT", "Interceptions Thrown"),
@@ -112,10 +153,19 @@ def parse_matchup(sub_title):
     return (match.group(1), match.group(2)) if match else (None, None)
 
 
+# Every league prefix across every covered sport, longest first, so
+# "KXLEADERNFL" is stripped before "KXNFL" and "KXWNBA" before "KXNBA".
+_PREFIXES = sorted(
+    {prefix for sport in sports.SPORTS for prefix in sport["prefixes"]} | {"KX"},
+    key=len, reverse=True,
+)
+
+
 def series_suffix(series_ticker):
-    """Strip the vendor prefix so 'KXNFL1HSPREAD' becomes '1HSPREAD'."""
-    ticker = series_ticker.upper()
-    for prefix in ("KXLEADERNFL", "KXNFL", "KXSTARTINGQB", "KXNEXTNFL", "KX"):
+    """Strip the league prefix so 'KXNFL1HSPREAD' becomes '1HSPREAD' and
+    'KXMLBSTRIKEOUTS' becomes 'STRIKEOUTS'."""
+    ticker = (series_ticker or "").upper()
+    for prefix in _PREFIXES:
         if ticker.startswith(prefix):
             return ticker[len(prefix):]
     return ticker
@@ -139,7 +189,7 @@ def classify_series(series_ticker, series_title=""):
         if suffix.startswith(key) or suffix == key:
             return "prop", segment, segment_label, label
 
-    if suffix in ("GAME", "WINNER", ""):
+    if suffix in ("GAME", "WINNER", "MATCH", "MATCHWINNER", ""):
         return "moneyline", segment, segment_label, "Moneyline"
 
     for key, bet_type, label in BET_TYPES:

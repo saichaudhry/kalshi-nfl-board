@@ -69,8 +69,8 @@ Requires **Python 3.8+**. There is nothing to `pip install` — standard library
 git clone https://github.com/saichaudhry/kalshi-nfl-board.git
 cd kalshi-nfl-board
 
-# 1. Pull current markets from Kalshi (~2 minutes, ~340 requests)
-python3 fetch_nfl.py
+# 1. Pull current markets from Kalshi (~12 minutes, ~1,100 requests)
+python3 fetch_markets.py
 
 # 2. Serve the folder and open it
 python3 -m http.server 8000
@@ -84,10 +84,41 @@ you try.
 Options:
 
 ```bash
-python3 fetch_nfl.py --days 3      # only games within 3 days
-python3 fetch_nfl.py --out foo.json
-python3 fetch_nfl.py --quiet
+python3 fetch_markets.py --sports nfl,mlb   # just these leagues
+python3 fetch_markets.py --days 3           # only games within 3 days
+python3 fetch_markets.py --scores-only      # refresh scores only (seconds)
+python3 fetch_markets.py --teams-only       # refresh crests only
 ```
+
+### Live scores
+
+Scores come from ESPN's public API, which needs no key. They are collected by
+the fetcher rather than the browser: ESPN advertises
+`access-control-allow-origin: *` and honours it for `curl`, but rejects
+browser-shaped requests, and the rejection carries no CORS headers — so a page
+fetch fails with a misleading CORS error. The front-end still attempts a live
+call and upgrades if it ever succeeds. A game that has already finished is
+usually absent, because Kalshi delists a market once it settles.
+
+### Your own trades (local only)
+
+`fetch_private.py` pulls your Kalshi fills, positions and settlements into
+`data/private.local.json`, which is **gitignored and never published**. The
+"My Trades" tab appears only when that file is present, so it simply does not
+exist on the deployed site.
+
+```bash
+export KALSHI_KEY_ID=...                      # kalshi.com -> Settings -> API Keys
+export KALSHI_KEY_FILE=~/.kalshi/kalshi_key.pem
+python3 fetch_private.py
+```
+
+Read-only: it issues GETs against `/portfolio` and nothing else. Realised P&L
+comes from `/portfolio/settlements`, not `/positions` — `/positions` only
+reports what is still open, so a settled book reads as zero P&L if you use it.
+Two details that are easy to get wrong: Kalshi signs the request path **without**
+its query string, and settlement `revenue` is in cents while the cost fields are
+dollar strings.
 
 ---
 
@@ -210,14 +241,19 @@ whole palette is token-driven so light and dark are defined once each.
 ## Files
 
 ```
-fetch_nfl.py    entry point: walks every NFL series, writes the snapshot
-kalshi_api.py   HTTP client — pagination, retries, offline vs. server errors
-classify.py     game keys, bet types, periods, player-name extraction
+fetch_markets.py  entry point: walks every covered series, writes the snapshots
+fetch_private.py  YOUR fills/settlements -> data/private.local.json (gitignored)
+sports.py         the leagues covered, and how each maps onto Kalshi and ESPN
+kalshi_api.py     HTTP client — pagination, retries, offline vs. server errors
+classify.py       game keys, bet types, periods, player-name extraction
 index.html      page shell
 css/app.css     design tokens + layout
-js/teams.js     team codes, crests, colours, name lookup
+js/teams.js     crests, colours and name lookup, per league
+js/sportbar.js  sport switcher, live scores, private-data loading
+js/trades.js    the local-only trades dashboard
 js/app.js       rendering, filtering, search
-data/snapshot.json   generated — commit it so the site works without Python
+data/index.json + data/sport-*.json   generated; commit so the site works
+data/private.local.json               generated; NEVER commit
 ```
 
 ---

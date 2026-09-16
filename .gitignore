@@ -17,3 +17,7 @@ data/*.tmp
 
 # macOS
 .DS_Store
+
+# Private trading data — fills, positions, P&L. Never commit these.
+data/private.local.json
+*.local.json
