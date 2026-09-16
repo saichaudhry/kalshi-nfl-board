@@ -29,9 +29,24 @@ NOT_A_PLAYER_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Case-sensitive on purpose: "BUF Bills" is a team, "Josh Allen" is a person.
-# Folding case here would classify every two-word player name as a team.
-TEAM_NAME_RE = re.compile(r"^[A-Z]{2,4}\s+[A-Z][a-z]")
+# Kalshi writes team entries as "<CODE> <Nickname>" -- "BUF Bills", "DET Lions".
+# A shape rule alone cannot separate those from a player whose first name is
+# initials ("DJ Moore", "CJ Stroud", "TJ Watt" all match "[A-Z]{2,4} [A-Z][a-z]"),
+# so the nickname is checked against the actual league instead of guessed at.
+TEAM_NICKNAMES = {
+    "Cardinals", "Falcons", "Ravens", "Bills", "Panthers", "Bears", "Bengals",
+    "Browns", "Cowboys", "Broncos", "Lions", "Packers", "Texans", "Colts",
+    "Jaguars", "Chiefs", "Raiders", "Chargers", "Rams", "Dolphins", "Vikings",
+    "Patriots", "Saints", "Giants", "Jets", "Eagles", "Steelers", "49ers",
+    "Seahawks", "Buccaneers", "Titans", "Commanders",
+}
+TEAM_NAME_RE = re.compile(r"^[A-Z0-9]{2,4}\s+(\w+)$")
+
+
+def is_team_label(name):
+    """True for 'BUF Bills' / 'DET Lions', false for 'DJ Moore'."""
+    match = TEAM_NAME_RE.match(name)
+    return bool(match) and match.group(1) in TEAM_NICKNAMES
 
 # Totals markets are titled "Full Game: Over 53.5 points scored", so the same
 # "prefix before the colon" rule that finds players also finds period names.
@@ -147,7 +162,7 @@ def extract_player(market_title, yes_sub_title=""):
             continue
         name = match.group(1).strip()
         if (NOT_A_PLAYER_RE.search(name)
-                or TEAM_NAME_RE.match(name)
+                or is_team_label(name)
                 or SEGMENT_PHRASE_RE.match(name)
                 or any(ch.isdigit() for ch in name)):
             return None

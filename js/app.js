@@ -70,93 +70,339 @@ function volume(n) {
 
 /* ---------- rendering ---------- */
 
-function marketRow(m) {
-  const mid = (m.bid !== null && m.ask !== null)
-    ? Math.round((m.bid + m.ask) / 2)
-    : (m.last ?? m.bid ?? m.ask);
+/* A market's Yes/No pair. Kalshi quotes both sides, and the spread
+   between them is the real cost of getting in, so both are shown. */
+function pricePair(m) {
+  if (m.bid === null && m.ask === null) {
+    return '<span class="price empty"><span class="side">NO BOOK</span>—</span>';
+  }
+  return `<span class="price yes"><span class="side">YES</span>${cents(m.ask ?? m.bid)}</span>
+          <span class="price no"><span class="side">NO</span>${cents(m.bid === null ? null : 100 - m.bid)}</span>`;
+}
 
-  // Price change since the previous close, which is what the arrow means.
-  let delta = '';
-  if (m.prev !== null && m.last !== null && m.prev !== m.last) {
-    const diff = m.last - m.prev;
-    const dir = diff > 0 ? 'up' : 'down';
-    delta = `<span class="delta ${dir}">${diff > 0 ? '▲' : '▼'}${Math.abs(diff)}</span>`;
+function midpoint(m) {
+  if (m.bid !== null && m.ask !== null) return Math.round((m.bid + m.ask) / 2);
+  return m.last ?? m.bid ?? m.ask ?? null;
+}
+
+function probBar(m) {
+  const mid = midpoint(m);
+  if (mid === null) return '';
+  return `<div class="prob"><i style="width:${Math.max(0, Math.min(100, mid))}%"></i></div>`;
+}
+
+function deltaTag(m) {
+  if (m.prev === null || m.last === null || m.prev === m.last) return '';
+  const diff = m.last - m.prev;
+  return `<span class="delta ${diff > 0 ? 'up' : 'down'}">${diff > 0 ? '▲' : '▼'}${Math.abs(diff)}</span>`;
+}
+
+/* Most labels repeat the player or stat that the surrounding box already
+   names. Stripping that leaves just the number you are scanning for. */
+function strikeOf(m) {
+  const label = m.label || '';
+  const afterColon = label.includes(':') ? label.split(':').slice(1).join(':').trim() : label;
+  return afterColon
+    .replace(/\b(passing|rushing|receiving|fantasy)\s+(yards|points|tds?)\b/gi, '')
+    .replace(/\bpoints scored\b/gi, '')
+    .replace(/\byards\b/gi, '')
+    .trim() || label;
+}
+
+/* ---------- panel shapes ---------- */
+
+/* Moneyline: the headline market, so it gets a real head-to-head box
+   rather than two rows that look like everything else. */
+function h2hPanel(title, markets) {
+  const ranked = [...markets].sort((a, b) => b.volume - a.volume);
+  const pair = ranked.slice(0, 2);
+  const rest = ranked.slice(2);
+
+  const side = (m) => {
+    const mid = midpoint(m);
+    return `
+      <div class="h2h-side">
+        <div class="h2h-team">${escapeHtml(m.label)}</div>
+        <div class="h2h-price">${mid === null ? '—' : mid}<small>¢</small></div>
+        <div class="h2h-imp">${mid === null ? 'no book' : `${mid}% implied`} ${deltaTag(m)}</div>
+        ${probBar(m)}
+      </div>`;
+  };
+
+  return panelShell(title, sumVolume(markets), `
+    <div class="h2h">
+      ${side(pair[0])}
+      <div class="h2h-vs">VS</div>
+      ${pair[1] ? side(pair[1]) : '<div></div>'}
+    </div>
+    ${rest.length ? `<div class="tiles">${rest.map(tile).join('')}</div>` : ''}`);
+}
+
+/* A ladder of strikes on one line — spreads, totals, team totals.
+   Every label in a spread market repeats the same stem ("Buffalo wins by
+   over 4.5 points"), so the stem is lifted out into a sub-heading and each
+   rung shows only the number that actually varies. That turns a wall of
+   wrapped sentences into a line you can read across. */
+const LINE_RE = /(-?\d+(?:\.\d+)?)/;
+
+function splitLadder(markets) {
+  const sides = new Map();
+  for (const m of markets) {
+    const label = m.label || '';
+    const hit = label.match(LINE_RE);
+    if (!hit) {
+      if (!sides.has('')) sides.set('', []);
+      sides.get('').push({ market: m, line: null });
+      continue;
+    }
+    // Everything before the number is the stem; everything after is a unit
+    // ("points scored") that the panel heading already implies.
+    const raw = label.slice(0, hit.index).replace(/[:,]\s*$/, '').trim();
+    // "Buffalo wins by over" -> "Buffalo", "Buffalo over" -> "Buffalo".
+    // A bare "Over" has nothing in front of it, so it stays as the side name.
+    const stripped = raw
+      .replace(/\b(wins\s+by\s+)?(over|under)\b\s*$/i, '')
+      .replace(/[:,]\s*$/, '')   // again: stripping "over" can re-expose one
+      .trim();
+    const key = stripped || raw || 'Line';
+    if (!sides.has(key)) sides.set(key, []);
+    sides.get(key).push({ market: m, line: parseFloat(hit[1]) });
+  }
+  // Busiest side first, and each side's rungs ordered by their line.
+  return [...sides.entries()]
+    .sort((a, b) => sumVolume(b[1].map((r) => r.market))
+                  - sumVolume(a[1].map((r) => r.market)))
+    .map(([side, rungs]) => [side, rungs.sort((a, b) => (a.line ?? 0) - (b.line ?? 0))]);
+}
+
+function ladderPanel(title, markets, suppressSide) {
+  let sides = splitLadder(markets);
+
+  // Inside a player's own card every side is that player's name, which the
+  // card header already says. Drop the heading rather than repeat it.
+  if (suppressSide) {
+    sides = sides.map(([side, rungs]) =>
+      [side === suppressSide ? '' : side, rungs]);
   }
 
-  const hasBook = m.bid !== null || m.ask !== null;
-  const prices = hasBook
-    ? `<span class="price yes"><span class="side">YES</span>${cents(m.ask ?? m.bid)}</span>
-       <span class="price no"><span class="side">NO</span>${cents(m.bid === null ? null : 100 - m.bid)}</span>`
-    : `<span class="price empty"><span class="side">NO BOOK</span>—</span>`;
+  // A single unnamed side means the stem carried no information; render it
+  // flat rather than adding a heading that just repeats the panel title.
+  const body = (sides.length === 1 && !sides[0][0])
+    ? `<div class="ladder">${sides[0][1].map((r) => rung(r.market, r.line)).join('')}</div>`
+    : sides.map(([side, rungs]) => `
+        <div class="stat-row">
+          ${side ? `<div class="stat-name">${escapeHtml(side)}</div>` : ''}
+          <div class="ladder">${rungs.map((r) => rung(r.market, r.line)).join('')}</div>
+        </div>`).join('');
 
-  const bar = mid !== null && mid !== undefined
-    ? `<div class="prob"><i style="width:${Math.max(0, Math.min(100, mid))}%"></i></div>` : '';
+  return panelShell(title, sumVolume(markets), body);
+}
+
+function tilePanel(title, markets) {
+  const sorted = [...markets].sort((a, b) => b.volume - a.volume);
+  return panelShell(title, sumVolume(markets),
+    `<div class="tiles">${sorted.map(tile).join('')}</div>`);
+}
+
+/* Props belong to a person before they belong to a stat, so each
+   player gets their own box holding all of their ladders. */
+function propsPanel(markets) {
+  const LEFTOVER = 'Team & other';
+  const byPlayer = new Map();
+  for (const m of markets) {
+    const key = m.player || LEFTOVER;
+    if (!byPlayer.has(key)) byPlayer.set(key, []);
+    byPlayer.get(key).push(m);
+  }
+
+  const boxes = [...byPlayer.entries()]
+    .sort((a, b) => {
+      // The catch-all bucket is the biggest but the least interesting, so it
+      // sorts last regardless of size.
+      if (a[0] === LEFTOVER) return 1;
+      if (b[0] === LEFTOVER) return -1;
+      return b[1].length - a[1].length;
+    })
+    .map(([name, rows]) => playerBox(name, rows))
+    .join('');
+
+  return panelShell('Player props', sumVolume(markets), boxes, `${byPlayer.size} players`);
+}
+
+/* Render a ladder's sides. Sides are only labelled when there is more than
+   one, and never when the label just repeats the box it sits in. */
+function ladderSides(markets, suppress) {
+  const sides = splitLadder(markets);
+  const multiple = sides.length > 1;
+  return sides.map(([side, rungs]) => {
+    const show = multiple && side && side !== suppress;
+    return `
+      ${show ? `<div class="side-name">${escapeHtml(side)}</div>` : ''}
+      <div class="ladder">${rungs.map((r) => rung(r.market, r.line)).join('')}</div>`;
+  }).join('');
+}
+
+function playerBox(name, markets) {
+  const team = markets.find((m) => m.team)?.team;
+  const byStat = new Map();
+  for (const m of markets) {
+    if (!byStat.has(m.typeLabel)) byStat.set(m.typeLabel, []);
+    byStat.get(m.typeLabel).push(m);
+  }
+
+  const stats = [...byStat.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([stat, rows]) => `
+      <div class="stat-row">
+        <div class="stat-name">${escapeHtml(stat)}</div>
+        ${ladderSides(rows, name)}
+      </div>`).join('');
 
   return `
-    <div class="row">
-      <div class="row-label">
-        ${escapeHtml(m.label)}
-        ${bar}
+    <div class="player-box">
+      <div class="player-box-head">
+        <span class="player-box-name">${escapeHtml(name)}</span>
+        ${team ? `<span class="player-box-team">${escapeHtml(team)}</span>` : ''}
+        <span class="player-box-count">${markets.length} markets</span>
       </div>
-      ${delta}
-      <span class="row-vol">${volume(m.volume)}</span>
-      <div class="prices">${prices}</div>
+      ${stats}
     </div>`;
 }
 
-/* Markets inside a card are grouped by period (Full Game, 1st Half, …)
-   and then by the stat, so a player's whole ladder stays together. */
+/* ---------- pieces ---------- */
+
+function rung(m, line) {
+  const mid = midpoint(m);
+  // A long-shot price is dimmed so the live part of the ladder stands out.
+  const cold = mid !== null && mid < 10 ? ' cold' : '';
+  // The full sentence stays in the tooltip; the rung shows only the line.
+  const face = (line === null || line === undefined) ? strikeOf(m) : line;
+  return `
+    <div class="rung" title="${escapeHtml(m.label)}">
+      <div class="rung-strike">${escapeHtml(face)}</div>
+      <div class="rung-price${cold}">${mid === null ? '—' : `${mid}¢`}</div>
+      ${probBar(m)}
+    </div>`;
+}
+
+function tile(m) {
+  return `
+    <div class="tile">
+      <div class="tile-label">${escapeHtml(m.label)}</div>
+      <div class="tile-prices">${pricePair(m)}</div>
+      ${probBar(m)}
+      <div class="tile-foot">
+        <span>${volume(m.volume) || 'no volume'}</span>
+        ${deltaTag(m)}
+      </div>
+    </div>`;
+}
+
+function panelShell(title, vol, inner, subOverride) {
+  const sub = subOverride ?? (vol ? volume(vol) : '');
+  return `
+    <section class="panel">
+      <header class="panel-head">
+        <span class="panel-title">${escapeHtml(title)}</span>
+        ${sub ? `<span class="panel-sub">${escapeHtml(sub)}</span>` : ''}
+      </header>
+      <div class="panel-body">${inner || '<div class="panel-empty">Nothing here.</div>'}</div>
+    </section>`;
+}
+
+const sumVolume = (markets) => markets.reduce((total, m) => total + m.volume, 0);
+
+const modeFor = (id) => (id.startsWith('player:') ? 'player' : 'game');
+
+/* ---------- assembling a card ---------- */
+
+/* Group by period first, then by market type: "1st Half · Spread" is a
+   different question from "Spread", and mixing them would be misleading. */
 function groupMarkets(markets) {
   const groups = new Map();
   for (const m of markets) {
-    const key = m.segment === 'full'
-      ? m.typeLabel
-      : `${m.segmentLabel} · ${m.typeLabel}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(m);
+    const key = m.segment === 'full' ? m.typeLabel : `${m.segmentLabel} · ${m.typeLabel}`;
+    if (!groups.has(key)) groups.set(key, { betType: m.betType, segment: m.segment, rows: [] });
+    groups.get(key).rows.push(m);
   }
-  // Busiest group first, so the headline markets lead.
-  return [...groups.entries()].sort((a, b) => {
-    const av = a[1].reduce((s, m) => s + m.volume, 0);
-    const bv = b[1].reduce((s, m) => s + m.volume, 0);
-    return bv - av;
-  });
+  return [...groups.entries()].sort((a, b) => sumVolume(b[1].rows) - sumVolume(a[1].rows));
 }
 
-function cardBody(id, markets) {
+/* Each bet type is rendered in the shape that suits it. */
+function renderGroup(label, group) {
+  const { betType, segment, rows } = group;
+
+  if (betType === 'moneyline' && segment === 'full' && rows.length >= 2) {
+    return h2hPanel(label, rows);
+  }
+  if (betType === 'spread' || betType === 'total' || betType === 'team_total') {
+    return ladderPanel(label, rows);
+  }
+  if (betType === 'prop') return null;   // props are pooled into one panel
+  return tilePanel(label, rows);
+}
+
+function cardBody(id, markets, mode = 'game') {
   const active = state.cardFilter.get(id) ?? null;
   const available = new Set(markets.map((m) => m.betType));
 
   const chips = BET_FILTERS
     .filter((f) => f.key === null || available.has(f.key))
     .map((f) => {
-      const n = f.key === null
-        ? markets.length
+      const n = f.key === null ? markets.length
         : markets.filter((m) => m.betType === f.key).length;
-      const sel = (active === f.key) ? 'true' : 'false';
-      return `<button role="tab" aria-selected="${sel}"
-                data-card="${id}" data-filter="${f.key ?? ''}">${f.label} ${n}</button>`;
+      return `<button role="tab" aria-selected="${active === f.key}"
+                data-card="${escapeHtml(id)}" data-filter="${f.key ?? ''}">${f.label} ${n}</button>`;
     }).join('');
 
   const shown = active ? markets.filter((m) => m.betType === active) : markets;
-  const body = groupMarkets(shown)
-    .map(([label, rows]) => `
-      <div class="group-label">${escapeHtml(label)}</div>
-      ${rows.map(marketRow).join('')}`)
-    .join('');
+
+  let body;
+  if (mode === 'player') {
+    // A player card is already about one person; grouping by stat is
+    // the only split left that means anything.
+    body = playerStatPanels(shown);
+  } else {
+    const props = shown.filter((m) => m.betType === 'prop');
+    body = groupMarkets(shown)
+      .map(([label, group]) => renderGroup(label, group))
+      .filter(Boolean)
+      .join('');
+    if (props.length) body += propsPanel(props);
+  }
+
+  // "All 45 / Props 45" is not a choice. Only show the bar when it filters.
+  const showChips = available.size > 1;
 
   return `
     <div class="body-inner">
-      <div class="segmented" role="tablist">${chips}</div>
+      ${showChips ? `<div class="segmented" role="tablist">${chips}</div>` : ''}
       ${body || '<div class="notice"><p>No markets in this filter.</p></div>'}
     </div>`;
 }
 
+function playerStatPanels(markets) {
+  const playerName = markets.find((m) => m.player)?.player;
+  const byStat = new Map();
+  for (const m of markets) {
+    const key = m.segment === 'full' ? m.typeLabel : `${m.segmentLabel} · ${m.typeLabel}`;
+    if (!byStat.has(key)) byStat.set(key, []);
+    byStat.get(key).push(m);
+  }
+  return [...byStat.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([stat, rows]) => ladderPanel(stat, rows, playerName))
+    .join('');
+}
+
+/* The collapsible shell every game, player and futures group shares.
+   Its body is rendered lazily on open: building 12,000 markets of
+   markup up front would cost seconds for content nobody has asked to see. */
 function card(id, title, meta, count, markets) {
   const open = state.openCards.has(id);
   return `
-    <section class="card ${open ? 'open' : ''}" data-id="${id}">
-      <button class="card-head" data-toggle="${id}" aria-expanded="${open}">
+    <section class="card ${open ? 'open' : ''}" data-id="${escapeHtml(id)}">
+      <button class="card-head" data-toggle="${escapeHtml(id)}" aria-expanded="${open}">
         <svg class="chev" width="9" height="14" viewBox="0 0 9 14" fill="none" aria-hidden="true">
           <path d="M1.5 1L7 7l-5.5 6" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round"/>
@@ -167,7 +413,7 @@ function card(id, title, meta, count, markets) {
         </span>
         <span class="count">${count}</span>
       </button>
-      <div class="card-body"><div>${open ? cardBody(id, markets) : ''}</div></div>
+      <div class="card-body"><div>${open ? cardBody(id, markets, modeFor(id)) : ''}</div></div>
     </section>`;
 }
 
@@ -325,7 +571,7 @@ document.addEventListener('click', (e) => {
     } else {
       state.openCards.add(id);
       section.querySelector('.card-body > div').innerHTML =
-        cardBody(id, currentMarketsFor(id));
+        cardBody(id, currentMarketsFor(id), modeFor(id));
       // Next frame, so the grid-row transition has a 0fr start to animate from.
       requestAnimationFrame(() => {
         section.classList.add('open');
@@ -340,7 +586,7 @@ document.addEventListener('click', (e) => {
     const id = filter.dataset.card;
     state.cardFilter.set(id, filter.dataset.filter || null);
     const host = document.querySelector(`.card[data-id="${CSS.escape(id)}"] .card-body > div`);
-    if (host) host.innerHTML = cardBody(id, currentMarketsFor(id));
+    if (host) host.innerHTML = cardBody(id, currentMarketsFor(id), modeFor(id));
   }
 });
 

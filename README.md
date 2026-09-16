@@ -116,6 +116,15 @@ The interface shows Kalshi's own conventions — prices in cents, where `67¢`
 means the market thinks it's 67% likely, with YES/NO both quoted — plus a
 probability bar and the price change since the previous close.
 
+**Each market type is drawn in the shape that suits it**, rather than as one
+uniform list of rows. A moneyline becomes a head-to-head box with both teams'
+implied probability set large. Spreads, totals and team totals become ladders
+split by side, where the repeated stem ("Buffalo wins by over …") is lifted into
+a heading so each rung shows only the line that actually varies — turning a wall
+of wrapped sentences into a row you can read across. Player props become one box
+per person, holding that player's ladders for every stat they're priced on.
+Everything else falls back to tiles.
+
 ---
 
 ## When things go wrong
