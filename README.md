@@ -5,7 +5,7 @@ bettor actually thinks: by game, by bet type, by period, and by player.
 
 Kalshi lists pro football across **342 separate market series**. Browsing that
 on the exchange means clicking through hundreds of pages. This project pulls all
-of it in one pass — **12,600+ open markets across 17 upcoming games and 156
+of it in one pass — **12,600+ open markets across 17 upcoming games and 150+
 players** — and renders it as a single searchable board.
 
 ![Gridiron Board](docs/screenshot.png)

@@ -289,11 +289,18 @@ function paintHeader() {
     + `${stats.players} players · ${stats.futures} season futures`;
 
   if (stale) {
+    // A visitor on the hosted site cannot run the fetcher, so only show the
+    // "re-run it" hint to someone actually developing locally.
+    const local = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+    const advice = local
+      ? 'Re-run <code>python3 fetch_nfl.py</code> for current numbers.'
+      : 'Prices move fast — check <a href="https://kalshi.com" target="_blank" '
+        + 'rel="noopener">kalshi.com</a> for the live book.';
+
     main.insertAdjacentHTML('beforebegin', `
       <div class="wrap"><div class="banner">
         <span>⏱</span>
-        <span>This snapshot is ${relativeTime(fetchedAt)}. Prices move fast —
-        re-run <code>python3 fetch_nfl.py</code> for current numbers.</span>
+        <span>This snapshot was taken ${relativeTime(fetchedAt)}. ${advice}</span>
       </div></div>`);
   }
 }

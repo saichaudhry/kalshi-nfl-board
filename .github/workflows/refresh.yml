@@ -1,0 +1,41 @@
+name: Refresh market snapshot
+
+# Kalshi's market-data API needs no credentials, so this workflow holds no
+# secrets -- it only ever reads public prices and commits the result.
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # every 30 minutes
+  workflow_dispatch:          # and on demand, from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-snapshot
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch current NFL markets
+        run: python3 fetch_nfl.py
+
+      - name: Commit the snapshot if prices moved
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # --quiet exits non-zero only when there is something to commit.
+          if git diff --quiet -- data/snapshot.json; then
+            echo "No change in market data; nothing to commit."
+          else
+            git add data/snapshot.json
+            git commit -m "Refresh snapshot ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+            git push
+          fi
