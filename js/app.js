@@ -113,15 +113,30 @@ function strikeOf(m) {
 
 /* Moneyline: the headline market, so it gets a real head-to-head box
    rather than two rows that look like everything else. */
-function h2hPanel(title, markets) {
+function h2hPanel(title, markets, order) {
   const ranked = [...markets].sort((a, b) => b.volume - a.volume);
-  const pair = ranked.slice(0, 2);
+  let pair = ranked.slice(0, 2);
   const rest = ranked.slice(2);
+
+  // Show the clubs in the same order as the card title and its crests.
+  // Volume order would put the favourite first and silently disagree with
+  // the header, which makes the two read as different matchups.
+  if (order && pair.length === 2) {
+    const position = (m) => {
+      const index = order.indexOf(teamCodeFromLabel(m.label));
+      return index === -1 ? 99 : index;
+    };
+    pair = [...pair].sort((a, b) => position(a) - position(b));
+  }
 
   const side = (m) => {
     const mid = midpoint(m);
+    // Moneyline markets are labelled in prose ("Buffalo"), so the crest is
+    // resolved from the text rather than a code the market does not carry.
+    const code = teamCodeFromLabel(m.label);
     return `
       <div class="h2h-side">
+        ${code ? `<div class="h2h-crest">${teamLogo(code, 40)}</div>` : ''}
         <div class="h2h-team">${escapeHtml(m.label)}</div>
         <div class="h2h-price">${mid === null ? '—' : mid}<small>¢</small></div>
         <div class="h2h-imp">${mid === null ? 'no book' : `${mid}% implied`} ${deltaTag(m)}</div>
@@ -261,8 +276,8 @@ function playerBox(name, markets) {
   return `
     <div class="player-box">
       <div class="player-box-head">
+        ${team ? teamLogo(team, 20) : ''}
         <span class="player-box-name">${escapeHtml(name)}</span>
-        ${team ? `<span class="player-box-team">${escapeHtml(team)}</span>` : ''}
         <span class="player-box-count">${markets.length} markets</span>
       </div>
       ${stats}
@@ -329,11 +344,11 @@ function groupMarkets(markets) {
 }
 
 /* Each bet type is rendered in the shape that suits it. */
-function renderGroup(label, group) {
+function renderGroup(label, group, order) {
   const { betType, segment, rows } = group;
 
   if (betType === 'moneyline' && segment === 'full' && rows.length >= 2) {
-    return h2hPanel(label, rows);
+    return h2hPanel(label, rows, order);
   }
   if (betType === 'spread' || betType === 'total' || betType === 'team_total') {
     return ladderPanel(label, rows);
@@ -364,8 +379,10 @@ function cardBody(id, markets, mode = 'game') {
     body = playerStatPanels(shown);
   } else {
     const props = shown.filter((m) => m.betType === 'prop');
+    const game = state.data.games.find((g) => g.key === id);
+    const order = game && game.away ? [game.away, game.home] : null;
     body = groupMarkets(shown)
-      .map(([label, group]) => renderGroup(label, group))
+      .map(([label, group]) => renderGroup(label, group, order))
       .filter(Boolean)
       .join('');
     if (props.length) body += propsPanel(props);
@@ -398,7 +415,7 @@ function playerStatPanels(markets) {
 /* The collapsible shell every game, player and futures group shares.
    Its body is rendered lazily on open: building 12,000 markets of
    markup up front would cost seconds for content nobody has asked to see. */
-function card(id, title, meta, count, markets) {
+function card(id, title, meta, count, markets, crests = '') {
   const open = state.openCards.has(id);
   return `
     <section class="card ${open ? 'open' : ''}" data-id="${escapeHtml(id)}">
@@ -407,6 +424,7 @@ function card(id, title, meta, count, markets) {
           <path d="M1.5 1L7 7l-5.5 6" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
+        ${crests}
         <span class="matchup">
           <span class="teams">${escapeHtml(title)}</span>
           <span class="meta">${escapeHtml(meta)}</span>
@@ -437,12 +455,16 @@ function viewGames() {
       ? g.markets.filter((m) => matches(m.label) || matches(m.player)
           || matches(g.title) || matches(g.away) || matches(g.home))
       : g.markets;
+    const crests = (g.away && g.home)
+      ? `<span class="crests">${teamLogo(g.away, 28)}${teamLogo(g.home, 28)}</span>`
+      : '';
     return card(
       g.key,
       g.title || `${g.away} vs ${g.home}`,
       `${gameDay(g.date)} · ${new Set(markets.map((m) => m.typeLabel)).size} market types`,
       markets.length,
       markets,
+      crests,
     );
   }).join('');
 }
@@ -476,13 +498,13 @@ function viewPlayers() {
     // The team comes from the market ticker, so it stays correct through
     // trades in a way a hardcoded roster would not.
     const team = p.markets.find((m) => m.team)?.team;
-    const title = team ? `${p.name}  ·  ${team}` : p.name;
     return card(
       `player:${p.name}`,
-      title,
+      p.name,
       `${p.game.title || p.game.key} · ${gameDay(p.game.date)}`,
       p.markets.length,
       p.markets,
+      team ? `<span class="crests">${teamLogo(team, 28)}</span>` : '',
     );
   }).join('');
 }

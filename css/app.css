@@ -757,3 +757,60 @@ footer a { color: var(--text-2); }
   letter-spacing: 0.02em;
 }
 .side-name:first-child { margin-top: 0; }
+
+/* ============================================================
+   Team logos
+   The monogram sits underneath the image and is revealed only if
+   the logo fails to load, so a team never renders as a broken
+   image icon.
+   ============================================================ */
+
+.logo {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--logo-size, 26px);
+  height: var(--logo-size, 26px);
+  flex-shrink: 0;
+}
+
+.logo img,
+.logo-mark {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+}
+
+.logo img { object-fit: contain; }
+
+.logo-mark {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--team, var(--fill-strong));
+  color: #fff;
+  font-size: calc(var(--logo-size, 26px) * 0.3);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+/* Two crests on a matchup row. They sit apart rather than overlapping:
+   an overlapped stack reads as "a group", which is the wrong idea for two
+   opponents, and it hides half of the away club's crest. */
+.crests {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+/* Full-bleed crest above the team name in the head-to-head box. */
+.h2h-crest { margin-bottom: 7px; }
+
+/* The small crest that replaces the plain text chip on a player card. */
+.player-box-head .logo,
+.card-head .matchup .logo { vertical-align: middle; }
+
+@media (prefers-reduced-transparency: reduce) {
+  .logo img { opacity: 1; }
+}

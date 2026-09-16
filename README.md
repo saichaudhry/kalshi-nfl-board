@@ -125,6 +125,16 @@ of wrapped sentences into a row you can read across. Player props become one box
 per person, holding that player's ladders for every stat they're priced on.
 Everything else falls back to tiles.
 
+**Team crests** appear on every matchup row, in the head-to-head box, and beside
+each player, so a game is identifiable before you read it. The images are loaded
+from ESPN's public logo CDN (`a.espncdn.com/i/teamlogos/nfl/500/<slug>.png`) —
+Kalshi's team codes mostly match ESPN's slugs but not always, so `js/teams.js`
+stores the slug per club rather than lowercasing the code and hoping. Underneath
+every logo sits a monogram in that club's primary colour; if the CDN is
+unreachable the monogram is what you see, so a team never renders as a broken
+image. (Logos are NFL trademarks, referenced from their origin to identify the
+clubs, not redistributed in this repo.)
+
 ---
 
 ## When things go wrong
@@ -165,6 +175,7 @@ kalshi_api.py   HTTP client — pagination, retries, offline vs. server errors
 classify.py     game keys, bet types, periods, player-name extraction
 index.html      page shell
 css/app.css     design tokens + layout
+js/teams.js     team codes, crests, colours, name lookup
 js/app.js       rendering, filtering, search
 data/snapshot.json   generated — commit it so the site works without Python
 ```
