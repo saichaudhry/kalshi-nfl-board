@@ -35,6 +35,7 @@ const state = {
   tradedOnly: true,      // Kalshi quotes strikes nobody has traded; hide those
   tradeRange: 30,        // days of trading history to summarise; null = all
   query: '',
+  notice: null,          // one-shot message shown above the next board
   openCards: new Set(),
   cardFilter: new Map(),   // card id -> active bet type
 };
@@ -755,6 +756,25 @@ function marketsForGame(game) {
   return pool.filter((m) => matches(m.label) || matches(m.player));
 }
 
+/* Clear a detail view whose target no longer exists, and scrub the URL so a
+   reload does not land back on the same dead end. The message is shown once,
+   above the board. */
+function dropDeadDetail(message) {
+  state.detail = null;
+  state.notice = message;
+  if (location.hash) {
+    history.replaceState({}, '', location.pathname + location.search);
+  }
+}
+
+/* A one-shot banner: shown on the next render, then forgotten. */
+function takeNotice() {
+  if (!state.notice) return '';
+  const text = state.notice;
+  state.notice = null;
+  return `<div class="private-note"><span>ℹ️</span><span>${escapeHtml(text)}</span></div>`;
+}
+
 /* Why a list is empty matters. A league that is out of season is not the same
    as a filter hiding everything, and blaming the filter for the off-season
    sends you hunting for a setting that will not help. */
@@ -782,11 +802,18 @@ function noGames(kind) {
 }
 
 function viewGames() {
-  if (state.detail?.view === 'games') return gameDetail(state.detail.key);
+  if (state.detail?.view === 'games') {
+    const game = state.data.games.find((g) => g.key === state.detail.key);
+    if (game) return gameDetail(state.detail.key);
+    // Kalshi delists a market once it settles, so an old link -- a bookmark,
+    // the back button, or a game that finished while open -- points at
+    // nothing. Fall back to the board rather than stranding the page.
+    dropDeadDetail('That game has finished and is no longer listed.');
+  }
 
   const games = visibleGames();
   if (!games.length) return noGames('games');
-  return `<div class="grid">${games.map(([g, m]) => gameTile(g, m)).join('')}</div>`;
+  return takeNotice() + `<div class="grid">${games.map(([g, m]) => gameTile(g, m)).join('')}</div>`;
 }
 
 function gameDetail(key) {
@@ -794,11 +821,23 @@ function gameDetail(key) {
   if (!game) return emptyState('Game not found', 'It may have closed since this snapshot.');
 
   const markets = marketsForGame(game);
+
+  // Kalshi lists a moneyline as soon as a fixture exists but only posts
+  // spreads, totals and props in the days before kickoff, so a game a week
+  // out legitimately has nothing else. Say so rather than look broken.
+  const onlyMoneyline = markets.length > 0
+    && markets.every((m) => m.betType === 'moneyline');
+  const note = onlyMoneyline
+    ? `<div class="private-note"><span>🗓</span><span>Only the moneyline is
+       listed so far. Kalshi posts spreads, totals and player props in the
+       days before kickoff.</span></div>`
+    : '';
+
   return detailShell(
     `${game.away ? teamLogo(game.away, 26) : ''}${game.home ? teamLogo(game.home, 26) : ''}`,
     game.title || key,
     `${gameDay(game.date)} · ${markets.length} markets`,
-    cardBody(key, markets, 'game'),
+    note + cardBody(key, markets, 'game'),
   );
 }
 
@@ -878,7 +917,12 @@ function playerTile(player) {
 }
 
 function viewPlayers() {
-  if (state.detail?.view === 'players') return playerDetail(state.detail.key);
+  if (state.detail?.view === 'players') {
+    if (buildPlayers().some((p) => p.name === state.detail.key)) {
+      return playerDetail(state.detail.key);
+    }
+    dropDeadDetail('That player has no open markets any more.');
+  }
 
   const players = visiblePlayers();
   if (!players.length) {
@@ -890,7 +934,7 @@ function viewPlayers() {
     }
     return noGames('players');
   }
-  return `<div class="grid">${players.map(playerTile).join('')}</div>`;
+  return takeNotice() + `<div class="grid">${players.map(playerTile).join('')}</div>`;
 }
 
 function playerDetail(name) {
@@ -950,11 +994,16 @@ function futuresTile(group) {
 }
 
 function viewFutures() {
-  if (state.detail?.view === 'futures') return futuresDetail(state.detail.key);
+  if (state.detail?.view === 'futures') {
+    if (state.data.futures.some((f) => f.event === state.detail.key)) {
+      return futuresDetail(state.detail.key);
+    }
+    dropDeadDetail('That market has settled and is no longer listed.');
+  }
 
   const groups = visibleFutures();
   if (!groups.length) return noGames('futures');
-  return `<div class="grid">${groups.map(futuresTile).join('')}</div>`;
+  return takeNotice() + `<div class="grid">${groups.map(futuresTile).join('')}</div>`;
 }
 
 function futuresDetail(eventTicker) {
