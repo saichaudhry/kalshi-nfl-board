@@ -680,9 +680,55 @@ function gameSummary(game, pool) {
   };
 }
 
+/* Tennis has no clubs: a singles match is two people and a doubles match is
+   two pairs, so there are no abbreviations to key on. When a game carries no
+   team codes, the two sides are taken from its busiest opposing markets
+   instead, which is what the moneyline pair always is. */
+function derivedSides(markets) {
+  const pair = markets
+    .filter((m) => m.betType === 'moneyline' || m.segment === 'full')
+    .filter((m) => midpoint(m) !== null)
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, 2);
+  return pair.length === 2 ? pair : null;
+}
+
 function gameTile(game, markets) {
   const s = gameSummary(game, markets);
   const teams = TEAMS;
+
+  // No club codes: render the two competitors by name.
+  if (!game.away || !game.home) {
+    const sides = derivedSides(markets);
+    const lead = sides
+      ? Math.max(...sides.map((m) => midpoint(m)))
+      : null;
+    const rows = (sides || []).map((m) => {
+      const mid = midpoint(m);
+      return `
+        <div class="gteam${mid === lead ? ' fav' : ''}">
+          <span class="gteam-name">${escapeHtml(m.label)}</span>
+          <span class="gteam-price">${mid === null ? '—' : `${mid}¢`}</span>
+        </div>`;
+    }).join('');
+
+    return `
+      <button class="gcard" data-open="games" data-key="${escapeHtml(game.key)}">
+        <div class="gcard-top">
+          <span class="gcard-when">${escapeHtml(gameDay(game.date))}</span>
+          <span class="gcard-count">${markets.length}</span>
+        </div>
+        ${rows || '<div class="gteam"><span class="gteam-name">No priced outcomes</span></div>'}
+        <div class="gcard-lines">
+          ${['Total', s.total]
+            .filter(() => true)
+            .length ? `<div class="gline">
+              <span class="gline-k">Total</span>
+              <span class="gline-v${s.total ? '' : ' none'}">${escapeHtml(s.total || '—')}</span>
+            </div>` : ''}
+        </div>
+      </button>`;
+  }
 
   // ESPN is matched on the two team abbreviations, the only field it and
   // Kalshi reliably share.
@@ -833,9 +879,13 @@ function gameDetail(key) {
        days before kickoff.</span></div>`
     : '';
 
+  const sides = (!game.away || !game.home) ? derivedSides(markets) : null;
+  const heading = game.title
+    || (sides ? sides.map((m) => m.label).join('  vs  ') : key);
+
   return detailShell(
     `${game.away ? teamLogo(game.away, 26) : ''}${game.home ? teamLogo(game.home, 26) : ''}`,
-    game.title || key,
+    heading,
     `${gameDay(game.date)} · ${markets.length} markets`,
     note + cardBody(key, markets, 'game'),
   );
@@ -1069,6 +1119,11 @@ function paintHeader() {
 
   paintCounts();
 
+  const built = $('#built');
+  if (built) {
+    built.textContent = `data as of ${new Date(fetchedAt).toLocaleString()}`;
+  }
+
 }
 
 
@@ -1174,6 +1229,12 @@ document.addEventListener('click', (e) => {
         toggle.setAttribute('aria-expanded', 'true');
       });
     }
+    return;
+  }
+
+  const retry = e.target.closest('[data-retry]');
+  if (retry) {
+    selectSport(retry.dataset.retry);
     return;
   }
 
@@ -1300,10 +1361,16 @@ function paintSportBar() {
   }).join('');
 }
 
+/* Increments on every sport switch. Clicking three sports quickly starts
+   three fetches, and without this the slowest reply wins and the board ends
+   up showing a different sport from the one highlighted. */
+let sportToken = 0;
+
 async function selectSport(key) {
   const entry = state.index.sports.find((s) => s.key === key);
   if (!entry) return;
 
+  const token = ++sportToken;
   state.sport = key;
   state.detail = null;
   state.openCards.clear();
@@ -1311,8 +1378,26 @@ async function selectSport(key) {
 
   main.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
 
-  const response = await fetch(`data/${entry.file}`, { cache: 'no-cache' });
-  state.data = await response.json();
+  let data;
+  try {
+    const response = await fetch(`data/${entry.file}`, { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    data = await response.json();
+  } catch (err) {
+    if (token !== sportToken) return;   // a newer switch already took over
+    console.error(`Could not load ${entry.file}:`, err);
+    main.innerHTML = emptyState(
+      `Could not load ${entry.label}`,
+      'The data file did not load. Check your connection, then try again — '
+      + 'the other sports are unaffected.',
+    ) + `<div style="text-align:center"><button class="back" data-retry="${escapeHtml(key)}"
+           style="margin:0 auto">Try again</button></div>`;
+    return;
+  }
+
+  if (token !== sportToken) return;     // a newer switch resolved first
+
+  state.data = data;
   setTeamRegistry(state.data.teams);
 
   // Snapshot scores render immediately; a live attempt may upgrade them.
@@ -1323,7 +1408,7 @@ async function selectSport(key) {
 
   Board.refreshScores(entry.espn, state.scores).then((scores) => {
     // Ignore a late reply for a sport the user has already navigated away from.
-    if (state.sport !== key || scores === state.scores) return;
+    if (token !== sportToken || scores === state.scores) return;
     state.scores = scores;
     render();
   });

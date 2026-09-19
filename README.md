@@ -56,7 +56,8 @@ $ curl -s -o /dev/null -w "%{http_code}\n" \
 ```
 
 So the architecture is **Python fetches → JSON snapshot → static page renders**.
-`fetch_nfl.py` writes `data/snapshot.json`; `js/app.js` reads that file. This
+`fetch_markets.py` writes `data/index.json` and one file per sport; `js/app.js`
+reads them. This
 also keeps the live site keyless and free of any backend.
 
 ---
