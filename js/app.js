@@ -755,15 +755,37 @@ function marketsForGame(game) {
   return pool.filter((m) => matches(m.label) || matches(m.player));
 }
 
+/* Why a list is empty matters. A league that is out of season is not the same
+   as a filter hiding everything, and blaming the filter for the off-season
+   sends you hunting for a setting that will not help. */
+function noGames(kind) {
+  const sport = (state.index?.sports || []).find((x) => x.key === state.sport);
+  const label = sport?.label || 'This sport';
+  const scheduled = state.data?.games?.length || 0;
+  const days = state.index?.daysAhead ?? 10;
+
+  if (kind === 'games' && !scheduled) {
+    return emptyState(`No ${label} games scheduled`,
+      `Kalshi lists no ${label} games in the next ${days} days. `
+      + 'Season-long markets are still under Futures.');
+  }
+  if (state.query) {
+    return emptyState('Nothing matches that search',
+      'Try a team or player name, or clear the search.');
+  }
+  if (state.tradedOnly) {
+    return emptyState('Nothing traded yet',
+      `${label} markets are quoted but none have traded. `
+      + 'Turn off "Traded only" to see the quoted lines.');
+  }
+  return emptyState(`No ${label} ${kind} right now`, 'Try another sport.');
+}
+
 function viewGames() {
   if (state.detail?.view === 'games') return gameDetail(state.detail.key);
 
   const games = visibleGames();
-  if (!games.length) {
-    return emptyState('No games match', state.tradedOnly
-      ? 'Nothing traded yet. Turn off "Traded only" to see quoted lines.'
-      : 'Try a team name like "Bills", or clear the search.');
-  }
+  if (!games.length) return noGames('games');
   return `<div class="grid">${games.map(([g, m]) => gameTile(g, m)).join('')}</div>`;
 }
 
@@ -860,10 +882,13 @@ function viewPlayers() {
 
   const players = visiblePlayers();
   if (!players.length) {
-    return emptyState('No players match',
-      state.tradedOnly
-        ? 'Nothing traded yet. Turn off "Traded only" to see quoted lines.'
-        : 'Player props are usually posted a few days before kickoff.');
+    const any = state.data?.games?.some((g) => g.markets.some((m) => m.player));
+    if (!any) {
+      return emptyState('No player props listed',
+        'Kalshi has not posted player markets for this league yet. '
+        + 'They usually appear a few days before a game.');
+    }
+    return noGames('players');
   }
   return `<div class="grid">${players.map(playerTile).join('')}</div>`;
 }
@@ -928,12 +953,7 @@ function viewFutures() {
   if (state.detail?.view === 'futures') return futuresDetail(state.detail.key);
 
   const groups = visibleFutures();
-  if (!groups.length) {
-    return emptyState('No futures match',
-      state.tradedOnly
-        ? 'Nothing traded yet. Turn off "Traded only" to see quoted lines.'
-        : 'Clear the search to see season-long markets.');
-  }
+  if (!groups.length) return noGames('futures');
   return `<div class="grid">${groups.map(futuresTile).join('')}</div>`;
 }
 

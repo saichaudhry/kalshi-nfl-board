@@ -2,11 +2,10 @@ name: Refresh market snapshot
 
 # Both APIs used here are public, so this workflow holds no secrets. It never
 # touches the portfolio endpoints and never sees any trading data: those live
-# in data/private.local.json, which is gitignored and only ever written locally.
+# in data/private.local.json, which is gitignored and only written locally.
 on:
   schedule:
-    - cron: '*/30 * * * *'   # full market refresh
-    - cron: '*/10 * * * *'   # scores only — they go stale fastest
+    - cron: '0 * * * *'   # hourly, on the hour
   workflow_dispatch:
 
 permissions:
@@ -19,6 +18,8 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # A full sweep is ~1,100 series; give it room but never let it hang.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -26,15 +27,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # A full sweep is ~1,100 series and takes minutes; scores are one request
-      # per league. Running the cheap one more often keeps scores current
-      # without re-walking the whole exchange.
-      - name: Refresh scores only
-        if: github.event.schedule == '*/10 * * * *'
-        run: python3 fetch_markets.py --scores-only
-
-      - name: Refresh all markets
-        if: github.event.schedule != '*/10 * * * *'
+      - name: Refresh all markets and scores
         run: python3 fetch_markets.py
 
       - name: Commit if anything moved
