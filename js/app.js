@@ -730,9 +730,10 @@ function gameTile(game, markets) {
       </button>`;
   }
 
-  // ESPN is matched on the two team abbreviations, the only field it and
-  // Kalshi reliably share.
-  const live = Board.scoreFor(state.scores, game.away, game.home);
+  // The fetcher resolves the score onto the game, matching on date as well as
+  // teams; a browser-side lookup by team pair alone would put today's score on
+  // tomorrow's fixture whenever a series runs on consecutive days.
+  const live = scoreOfGame(game);
   const scoreOf = (code) => live?.sides.find((x) => x.abbr === String(code).toUpperCase());
 
   const row = (code, price) => {
@@ -769,6 +770,17 @@ function gameTile(game, markets) {
       <span class="gline-v${value ? '' : ' none'}">${escapeHtml(value || '—')}</span>
     </div>`;
 
+  // Once a game starts Kalshi closes the pre-game moneyline, spread and total
+  // and lists in-play markets instead. A row of dashes reads as a failure, so
+  // say what is actually on offer.
+  const noPregame = s.away === null && s.home === null && !s.spread && !s.total;
+  const lines = noPregame
+    ? `<div class="gcard-lines"><div class="gline">
+         <span class="gline-k">${live && live.state === 'in' ? 'In play' : 'Markets'}</span>
+         <span class="gline-v">${markets.length} live market${markets.length === 1 ? '' : 's'}</span>
+       </div></div>`
+    : `<div class="gcard-lines">${line('Spread', s.spread)}${line('Total', s.total)}</div>`;
+
   return `
     <button class="gcard" data-open="games" data-key="${escapeHtml(game.key)}">
       <div class="gcard-top">
@@ -778,11 +790,33 @@ function gameTile(game, markets) {
       </div>
       ${row(game.away, s.away)}
       ${row(game.home, s.home)}
-      <div class="gcard-lines">
-        ${line('Spread', s.spread)}
-        ${line('Total', s.total)}
-      </div>
+      ${lines}
     </button>`;
+}
+
+/* A game's score, as resolved by the fetcher. The live-refresh map is only a
+   fallback for the case where ESPN ever answers the browser directly. */
+function scoreOfGame(game) {
+  if (game.score) return game.score;
+  const live = Board.scoreFor(state.scores, game.away, game.home);
+  // Without a date the pair alone is ambiguous, so only trust it when this
+  // fixture is the only one between these two clubs.
+  if (!live) return null;
+  const sameTeams = state.data.games.filter(
+    (g) => g.away === game.away && g.home === game.home);
+  return sameTeams.length === 1 ? live : null;
+}
+
+/* Games arrive sorted by date, which puts yesterday's unsettled game above
+   tonight's. Order by what a person actually wants first instead: a game in
+   progress, then the next to start, and anything already played last. */
+function gameRank(game) {
+  const live = scoreOfGame(game);
+  if (live && live.state === 'in') return 0;
+
+  const today = new Date().toISOString().slice(0, 10);
+  if (!game.date || game.date >= today) return 1;
+  return 2;   // already played, markets still open pending settlement
 }
 
 function visibleGames() {
@@ -790,7 +824,15 @@ function visibleGames() {
     .filter((g) => matches(g.title) || matches(g.away) || matches(g.home)
       || (state.query && g.markets.some((m) => matches(m.label) || matches(m.player))))
     .map((g) => [g, marketsForGame(g)])
-    .filter(([, markets]) => markets.length);
+    .filter(([, markets]) => markets.length)
+    .sort((a, b) => {
+      const ra = gameRank(a[0]);
+      const rb = gameRank(b[0]);
+      if (ra !== rb) return ra - rb;
+      // Within the played bucket the most recent is the interesting one.
+      const dir = ra === 2 ? -1 : 1;
+      return dir * String(a[0].date || '').localeCompare(String(b[0].date || ''));
+    });
 }
 
 function marketsForGame(game) {

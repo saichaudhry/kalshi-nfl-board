@@ -108,7 +108,7 @@ def espn_teams(path):
         if not abbr:
             continue
         logos = team.get("logos") or []
-        out[abbr] = {
+        entry = {
             "name": team.get("displayName") or abbr,
             # Kalshi names clubs in several ways across market labels -- "Tampa
             # Bay", "Rays", "A's" -- so every name ESPN knows is kept and the
@@ -119,6 +119,12 @@ def espn_teams(path):
             "color": f"#{team['color']}" if team.get("color") else None,
             "logo": logos[0].get("href") if logos else None,
         }
+        out[abbr] = entry
+        # Kalshi codes a few clubs differently from ESPN (CWS vs CHW, JAC vs
+        # JAX). Register the alternative spellings against the same club so a
+        # crest and a club name resolve whichever code a market carries.
+        for alias in SCORE_ALIASES.get(abbr, []):
+            out.setdefault(alias, entry)
     return out
 
 
@@ -174,6 +180,11 @@ def espn_scores(path):
             "detail": status.get("shortDetail") or status.get("description") or "",
             "completed": bool(status.get("completed")),
             "sides": sides,
+            # The local game date, so a score can be matched to the right
+            # fixture. Baseball teams play the same opponent on consecutive
+            # days -- 15 of 35 MLB pairs span multiple dates -- so a key of
+            # just the two abbreviations puts today's score on tomorrow's game.
+            "date": espn_local_date(event.get("date")),
         }
         # Register every spelling of both clubs, in both orders, so a lookup
         # never depends on which side Kalshi lists first or which code it uses.
@@ -184,6 +195,55 @@ def espn_scores(path):
                 out[f"{x}|{y}"] = record
                 out[f"{y}|{x}"] = record
     return out
+
+
+def espn_local_date(iso):
+    """ESPN timestamps are UTC; a night game is already tomorrow in UTC terms.
+    US sports schedule by Eastern date, so convert before comparing."""
+    if not iso:
+        return None
+    try:
+        stamp = dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        return stamp.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+    except Exception:
+        return stamp.date().isoformat()
+
+
+def attach_scores(games, scores):
+    """Put each score on the game it belongs to, matched on date as well as
+    teams. Resolving the join here rather than in the browser means the page
+    cannot mis-attribute a score, and a fixture with no score simply has none.
+    """
+    by_pair = {}
+    for record in scores.values():
+        a, b = (side["abbr"] for side in record["sides"])
+        by_pair.setdefault(frozenset((a, b)), []).append(record)
+
+    for game in games:
+        if not game.get("away") or not game.get("home"):
+            continue
+        for names_a in [game["away"], *[k for k, v in SCORE_ALIASES.items()
+                                        if game["away"] in v]]:
+            for names_b in [game["home"], *[k for k, v in SCORE_ALIASES.items()
+                                            if game["home"] in v]]:
+                found = by_pair.get(frozenset((names_a, names_b)))
+                if not found:
+                    continue
+                exact = [r for r in found if r.get("date") == game["date"]]
+                if exact:
+                    game["score"] = exact[0]
+                elif len(found) == 1 and not any(
+                        g is not game and g.get("away") == game["away"]
+                        and g.get("home") == game["home"] for g in games):
+                    # Only one fixture for this pair, so no ambiguity.
+                    game["score"] = found[0]
+                break
+            if game.get("score"):
+                break
 
 
 def collect(sport_key, days_ahead, verbose=True, all_series=None):
@@ -292,6 +352,9 @@ def build_sport(sport, days_ahead, verbose=True, all_series=None):
         futures.values(),
         key=lambda f: (-sum(m["volume"] for m in f["markets"]), f["title"]))
 
+    scores = espn_scores(sport["espn"])
+    attach_scores(game_list, scores)
+
     players = {m["player"] for g in game_list for m in g["markets"] if m["player"]}
     total = (sum(len(g["markets"]) for g in game_list)
              + sum(len(f["markets"]) for f in futures_list))
@@ -306,7 +369,7 @@ def build_sport(sport, days_ahead, verbose=True, all_series=None):
             "players": len(players), "futures": len(futures_list),
         },
         "teams": espn_teams(sport["espn"]),
-        "scores": espn_scores(sport["espn"]),
+        "scores": scores,
         "games": game_list,
         "futures": futures_list,
         "problems": problems,
@@ -366,6 +429,9 @@ def main():
                 snapshot["teams"] = espn_teams(sport["espn"]) or snapshot.get("teams", {})
             if args.scores_only:
                 snapshot["scores"] = espn_scores(sport["espn"])
+                for game in snapshot.get("games", []):
+                    game.pop("score", None)
+                attach_scores(snapshot.get("games", []), snapshot["scores"])
                 snapshot["scoresAt"] = dt.datetime.now(dt.timezone.utc).isoformat(
                     timespec="seconds")
             write_atomic(path, snapshot)
