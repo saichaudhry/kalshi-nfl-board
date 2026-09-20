@@ -1,12 +1,22 @@
 # Gridiron Board
 
-Live prices for **every upcoming NFL market on Kalshi**, re-organised the way a
-bettor actually thinks: by game, by bet type, by period, and by player.
+Live prices for **every upcoming sports market on Kalshi**, re-organised the way
+a bettor actually thinks: by sport, by game, by bet type, by player — with live
+scores alongside.
 
-Kalshi lists pro football across **342 separate market series**. Browsing that
-on the exchange means clicking through hundreds of pages. This project pulls all
-of it in one pass — **12,600+ open markets across 17 upcoming games and 150+
-players** — and renders it as a single searchable board.
+Kalshi lists sport across thousands of separate market series, and browsing that
+on the exchange means clicking through hundreds of pages. This project pulls
+**~1,100 series across eight leagues** in one pass — around **50,000 open
+markets** — and renders them as one searchable board.
+
+| League | Covered |
+| --- | --- |
+| NFL, NCAAF | game lines, quarters and halves, player props, season futures |
+| MLB, NBA, NHL, WNBA | game lines, team totals, player props, futures |
+| ATP, WTA | match winners, game totals, singles and doubles |
+
+Adding a league takes one entry in `sports.py`: it carries the Kalshi ticker
+prefixes and the ESPN path, and everything else follows.
 
 ![Gridiron Board](docs/screenshot.png)
 
@@ -14,19 +24,25 @@ players** — and renders it as a single searchable board.
 
 ## How the API is called
 
-The app talks to Kalshi's **public market-data API** (`https://api.elections.kalshi.com/trade-api/v2`)
-using nothing but the Python standard library — `urllib.request` to make the
-HTTP GET and `json` to decode it, wrapped in `kalshi_api.py`. Three endpoints do
-the work: `GET /series?category=Sports` lists every market family (from which the
-342 pro-football ones are filtered by ticker prefix), and
+The board reads two public APIs, both with the Python standard library only —
+`urllib.request` to make the HTTP GET and `json` to decode it, wrapped in
+`kalshi_api.py`. From **Kalshi** (`https://api.elections.kalshi.com/trade-api/v2`),
+`GET /series?category=Sports` lists every market family, from which the ~1,100
+belonging to the eight covered leagues are filtered by ticker prefix, and
 `GET /events?series_ticker=…&status=open&with_nested_markets=true` returns each
 series' open events **with their child markets and live prices inlined** — that
-last parameter is the important one, because it collapses what would be
-thousands of requests into one per series. Responses are JSON objects whose
-`markets[]` entries carry prices as **strings in dollars** (`"yes_bid_dollars": "0.6700"`),
-which the code converts to the integer cents Kalshi's own UI displays (`67¢`);
-pagination is handled by following the opaque `cursor` string each response
-returns until it comes back empty.
+last parameter is the important one, because it collapses what would be tens of
+thousands of requests into one per series. From **ESPN**
+(`site.api.espn.com/apis/site/v2/sports/<league>/scoreboard` and `/teams`) come
+live scores and the team crests. Both return JSON: Kalshi's `markets[]` entries
+carry prices as **strings in dollars** (`"yes_bid_dollars": "0.6700"`), which the
+code converts to the integer cents Kalshi's own UI shows (`67¢`), while counts
+arrive as floating-point strings (`"volume_fp": "663964.55"`); pagination follows
+the opaque `cursor` string each response returns until it comes back empty.
+
+A third, **authenticated** surface is used only by `fetch_private.py`, which runs
+locally and never touches the published site: `GET /portfolio/fills`,
+`/positions` and `/settlements`, signed with an RSA key (see below).
 
 ### No API key required
 
@@ -211,18 +227,25 @@ clubs, not redistributed in this repo.)
 
 ## When things go wrong
 
-Deliberately tested failure modes:
+Deliberately tested failure modes, each exercised rather than just written:
 
 | What breaks | What happens |
 | --- | --- |
 | No internet | Fetcher prints `Could not reach Kalshi: …`, exits `1`, and **leaves the existing snapshot in place** so the site still renders |
 | Kalshi rate-limits (429) or 5xx | Retried three times with exponential backoff |
-| One series 404s or errors | Skipped and recorded in `problems[]`; the other 341 still finish |
+| ESPN rate-limits (403 on a burst) | Retried with backoff; crests and scores are optional, so a run never fails over them |
+| One series 404s or errors | Skipped and recorded in `problems[]`; the other ~1,100 still finish |
 | Malformed JSON | Raises a clear `KalshiError` naming the URL |
-| Off-season, no NFL markets | Page shows "No open NFL markets — this is normal between February and August" instead of a blank screen |
+| A sport's data file fails to load | That sport shows an error with a retry button; the other seven are unaffected |
+| Switching sports faster than they load | A token discards superseded replies, so the board can't end up showing a different sport from the one selected |
+| A league is out of season | "No NBA games scheduled — Kalshi lists no NBA games in the next 10 days", not a filter complaint |
+| A game has only a moneyline | Says Kalshi posts spreads, totals and props nearer kickoff, rather than looking half-loaded |
+| A game kicks off | Kalshi closes the pre-game lines, so the tile reports its in-play market count instead of a row of dashes |
+| A link to a settled game | Kalshi delists it; the board recovers, says why, and scrubs the dead URL |
 | Snapshot missing | Page explains how to generate it and why `file://` fails |
-| Search matches nothing | Friendly empty state per tab, not an empty page |
-| Interrupted mid-write | Snapshot is written to a `.tmp` file and atomically moved, so it is never half-written |
+| Search matches nothing | Friendly empty state naming the league, not an empty page |
+| Interrupted mid-write | Written to a `.tmp` file and atomically moved, so it is never half-written |
+| Credentials missing or rotated | `fetch_private.py` says which variable to set instead of throwing a stack trace |
 
 ---
 
