@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ask the Board — Gridiron Board</title>
+<meta name="description" content="Ask a plain-English question about Kalshi sports markets. A Flask backend on Render finds the matching markets, re-prices them live, and has Claude explain what they imply.">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/ask.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
+</head>
+<body>
+
+<header class="chrome">
+  <div class="wrap">
+    <div class="chrome-top">
+      <h1>Ask the Board</h1>
+      <div class="freshness" id="status" role="status" aria-live="polite">
+        <span class="dot stale"></span><span id="statusText">Connecting to server…</span>
+      </div>
+    </div>
+    <p class="subhead">
+      Ask about any game, player, or future. The backend finds the matching Kalshi
+      markets, re-prices them live, and Claude explains what they imply.
+      <a href="./">Back to the board</a>
+    </p>
+  </div>
+</header>
+
+<main class="wrap ask-main">
+  <form id="askForm" class="ask-card" novalidate>
+    <div class="ask-row">
+      <label class="visually-hidden" for="sport">Sport</label>
+      <select id="sport" class="ask-select" aria-label="Sport">
+        <option value="nfl">NFL</option>
+        <option value="ncaaf">NCAAF</option>
+        <option value="mlb">MLB</option>
+        <option value="nba">NBA</option>
+        <option value="nhl">NHL</option>
+        <option value="wnba">WNBA</option>
+        <option value="atp">ATP</option>
+        <option value="wta">WTA</option>
+      </select>
+      <label class="visually-hidden" for="question">Question</label>
+      <input id="question" class="search ask-input" type="text" maxlength="300"
+             autocomplete="off" placeholder="Who is favoured in Chiefs vs Dolphins?">
+      <button id="askBtn" class="ask-btn" type="submit">Ask</button>
+    </div>
+    <div class="chips" id="chips" aria-label="Example questions"></div>
+    <p class="form-error" id="formError" role="alert" hidden></p>
+  </form>
+
+  <section id="result" aria-live="polite"></section>
+</main>
+
+<footer class="wrap">
+  <p>
+    Frontend on GitHub Pages. Backend: Flask on Render
+    (<a href="https://github.com/saichaudhry/gridiron-ask-backend" target="_blank" rel="noopener">source</a>).
+    Prices from the <a href="https://kalshi.com" target="_blank" rel="noopener">Kalshi</a> public API;
+    answers by Claude. For coursework, not for trading.<br>
+    Built for CMU 15-113
+  </p>
+</footer>
+
+<script src="js/ask.js"></script>
+</body>
+</html>

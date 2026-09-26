@@ -1492,3 +1492,11 @@ footer a { color: var(--text-2); }
   color: var(--text-2);
   margin-bottom: 14px;
 }
+
+/* Link to the Ask the Board page (backend-powered Q&A). */
+.ask-link {
+  font-size: 12.5px; font-weight: 600; text-decoration: none;
+  color: var(--accent); background: var(--fill);
+  padding: 4px 10px; border-radius: 999px;
+}
+.ask-link:hover { background: var(--fill-strong); }

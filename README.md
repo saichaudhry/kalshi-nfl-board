@@ -22,6 +22,17 @@ prefixes and the ESPN path, and everything else follows.
 
 ---
 
+## Ask the Board (HW4: backend + frontend)
+
+[`ask.html`](https://saichaudhry.github.io/kalshi-nfl-board/ask.html) lets you
+ask a plain-English question ("Who wins the Super Bowl?", "Josh Allen MVP
+odds"). It is a static page that calls a separate Flask backend on Render,
+[gridiron-ask-backend](https://github.com/saichaudhry/gridiron-ask-backend).
+The backend picks the matching markets from this board's snapshot, re-prices
+them live from Kalshi, and has Claude explain what they imply. The Claude API
+key lives only on the backend. Frontend files are `ask.html`, `js/ask.js` and
+`css/ask.css`. Endpoints, setup and secrets are documented in the backend repo.
+
 ## How the API is called
 
 The board reads two public APIs, both with the Python standard library only —
